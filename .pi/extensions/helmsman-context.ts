@@ -2,9 +2,11 @@ import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionContext, ToolCallEvent } from "@mariozechner/pi-coding-agent";
 import { assessContext, isReadOnlyBashCommand } from "./helmsman-context/heuristics.js";
 import { discoverRepoCandidates, findRepoRoot } from "./helmsman-context/filesystem.js";
+import { buildContextRoutePlan } from "./helmsman-context/route.js";
 import type { ContextAssessment } from "./helmsman-context/types.js";
 
 const COMMAND_NAME = "context";
+const SWITCH_COMMAND_NAME = "context-switch";
 const CUSTOM_TYPE = "helmsman-context";
 const READ_ONLY_CUSTOM_TOOLS = new Set(["fetch_reference", "questionnaire"]);
 
@@ -34,6 +36,15 @@ function formatAssessment(assessment: ContextAssessment): string {
 		`Block mutations: ${assessment.blockMutations ? "yes" : "no"}`,
 		"Candidates:",
 		candidateLines || "(none)",
+	].join("\n");
+}
+
+function formatRoutePlan(command: string, handoffPrompt: string): string {
+	return [
+		"Explicit context-correction flow:",
+		`1. Run: ${command}`,
+		"2. In the target repo session, continue with this prompt:",
+		handoffPrompt,
 	].join("\n");
 }
 
@@ -137,6 +148,32 @@ export default function helmsmanContextExtension(pi: ExtensionAPI) {
 				customType: CUSTOM_TYPE,
 				content,
 				details: assessment,
+				display: true,
+			});
+		},
+	});
+
+	pi.registerCommand(SWITCH_COMMAND_NAME, {
+		description: "Show an explicit repo-correction route using pi --fork for traceable handoff",
+		handler: async (args, ctx) => {
+			const assessment = await refreshAssessment(ctx, args.trim() || lastInputText);
+			const sessionFile = ctx.sessionManager.getSessionFile();
+			const routePlan = buildContextRoutePlan({
+				assessment,
+				sessionFile,
+				lastInputText,
+			});
+			if (!routePlan) {
+				ctx.ui.notify("No target repo available for context correction", "warning");
+				return;
+			}
+
+			const content = formatRoutePlan(routePlan.command, routePlan.handoffPrompt);
+			ctx.ui.notify(`Route to ${routePlan.targetRepoRoot}`, "info");
+			pi.sendMessage({
+				customType: CUSTOM_TYPE,
+				content,
+				details: routePlan,
 				display: true,
 			});
 		},

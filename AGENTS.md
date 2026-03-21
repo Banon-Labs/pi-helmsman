@@ -12,6 +12,16 @@ bd close <id>         # Complete work
 bd dolt push          # Push beads data to remote
 ```
 
+## Token-Efficient File Reads
+
+- When reading files through shell commands, prefer `rtk read <path>` first because it trims tokens.
+- Keep using non-mutating read paths for inspection.
+
+## Test-Driven Development Preference
+
+- Prefer TDD for every task: add or update a small failing test first when practical, then implement the minimal code change to make it pass.
+- Keep tests and production changes scoped, atomic, and easy to validate.
+
 ## Non-Interactive Shell Commands
 
 **ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.

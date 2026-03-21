@@ -8,6 +8,9 @@ bd.sock.startlock
 sync-state.json
 last-touched
 
+# Push state (runtime, per-machine)
+push-state.json
+
 # Local version tracking (prevents upgrade notification spam after git ops)
 .local_version
 

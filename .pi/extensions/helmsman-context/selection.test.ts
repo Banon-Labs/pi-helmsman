@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { chooseSelectableCandidates, formatSelectableCandidateLabel, shouldPromptForRepoSelection } from "./selection.ts";
+import {
+	chooseSelectableCandidates,
+	formatSelectableCandidateDetails,
+	formatSelectableCandidateLabel,
+	shouldPromptForRepoSelection,
+} from "./selection.ts";
 import type { RepoCandidate } from "./types.ts";
 
 const helmsman: RepoCandidate = {
@@ -48,6 +53,17 @@ describe("formatSelectableCandidateLabel", () => {
 		expect(label).toContain("score=60");
 		expect(label).toContain("current repo, has .beads");
 		expect(label).not.toContain("/home/choza/projects/pi-helmsman");
+	});
+});
+
+describe("formatSelectableCandidateDetails", () => {
+	test("includes full path and all candidate reasons for tied choices", () => {
+		const details = formatSelectableCandidateDetails([helmsman, mono]);
+		expect(details).toContain("Ambiguous repo candidates:");
+		expect(details).toContain("1. pi-helmsman");
+		expect(details).toContain("Path: /home/choza/projects/pi-helmsman");
+		expect(details).toContain("Reasons: current repo, has .beads");
+		expect(details).toContain("2. pi-mono");
 	});
 });
 

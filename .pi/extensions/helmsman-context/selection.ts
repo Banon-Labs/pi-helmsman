@@ -16,6 +16,14 @@ export function formatSelectableCandidateLabel(candidate: RepoCandidate): string
 	return `${candidate.repoName} — score=${candidate.score} — ${reasons}`;
 }
 
+export function formatSelectableCandidateDetails(candidates: RepoCandidate[]): string {
+	const lines = candidates.map((candidate, index) => {
+		const reasons = candidate.reasons.join(", ") || "no distinguishing evidence";
+		return [`${index + 1}. ${candidate.repoName}`, `   Path: ${candidate.repoRoot}`, `   Reasons: ${reasons}`].join("\n");
+	});
+	return ["Ambiguous repo candidates:", ...lines].join("\n");
+}
+
 export function shouldPromptForRepoSelection(input: RepoSelectionDecisionInput): boolean {
 	return !input.hasExplicitTarget && input.selectableCandidates.length > 1;
 }

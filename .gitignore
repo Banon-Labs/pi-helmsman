@@ -5,3 +5,6 @@
 
 # Local Pi materialized remote reference cache
 .pi/remote-refs/
+
+# Beads runtime state (per-machine, not canonical project data)
+.beads/push-state.json

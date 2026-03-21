@@ -1,7 +1,8 @@
 import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionContext, ToolCallEvent } from "@mariozechner/pi-coding-agent";
-import { assessContext, isReadOnlyBashCommand } from "./helmsman-context/heuristics.js";
 import { discoverRepoCandidates, findRepoRoot } from "./helmsman-context/filesystem.js";
+import { chooseRouteGoal, shouldTrackAsGoal } from "./helmsman-context/goal.js";
+import { assessContext, isReadOnlyBashCommand } from "./helmsman-context/heuristics.js";
 import { buildContextRoutePlan } from "./helmsman-context/route.js";
 import type { ContextAssessment } from "./helmsman-context/types.js";
 
@@ -81,6 +82,7 @@ function isMutatingToolCall(event: ToolCallEvent): boolean {
 export default function helmsmanContextExtension(pi: ExtensionAPI) {
 	let lastAssessment: ContextAssessment | undefined;
 	let lastInputText = "";
+	let lastGoalText = "";
 
 	async function refreshAssessment(ctx: ExtensionContext, inputText = lastInputText) {
 		lastInputText = inputText;
@@ -98,6 +100,9 @@ export default function helmsmanContextExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("input", async (event, ctx) => {
+		if (shouldTrackAsGoal(event.text)) {
+			lastGoalText = event.text.trim();
+		}
 		await refreshAssessment(ctx, event.text);
 		return { action: "continue" as const };
 	});
@@ -156,12 +161,14 @@ export default function helmsmanContextExtension(pi: ExtensionAPI) {
 	pi.registerCommand(SWITCH_COMMAND_NAME, {
 		description: "Show an explicit repo-correction route using pi --fork for traceable handoff",
 		handler: async (args, ctx) => {
-			const assessment = await refreshAssessment(ctx, args.trim() || lastInputText);
+			const routeHint = args.trim() || lastInputText;
+			const assessment = await refreshAssessment(ctx, routeHint);
 			const sessionFile = ctx.sessionManager.getSessionFile();
+			const routeGoal = chooseRouteGoal(args, lastGoalText, lastInputText);
 			const routePlan = buildContextRoutePlan({
 				assessment,
 				sessionFile,
-				lastInputText,
+				lastInputText: routeGoal,
 			});
 			if (!routePlan) {
 				ctx.ui.notify("No target repo available for context correction", "warning");

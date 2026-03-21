@@ -4,6 +4,7 @@ import { discoverRepoCandidates, findRepoRoot } from "./helmsman-context/filesys
 import { chooseRouteGoal, shouldTrackAsGoal } from "./helmsman-context/goal.js";
 import { assessContext, isReadOnlyBashCommand } from "./helmsman-context/heuristics.js";
 import { buildContextRoutePlan } from "./helmsman-context/route.js";
+import { chooseSelectableCandidates, shouldPromptForRepoSelection } from "./helmsman-context/selection.js";
 import type { ContextAssessment } from "./helmsman-context/types.js";
 
 const COMMAND_NAME = "context";
@@ -161,12 +162,30 @@ export default function helmsmanContextExtension(pi: ExtensionAPI) {
 	pi.registerCommand(SWITCH_COMMAND_NAME, {
 		description: "Show an explicit repo-correction route using pi --fork for traceable handoff",
 		handler: async (args, ctx) => {
-			const routeHint = args.trim() || lastInputText;
+			const explicitTarget = args.trim();
+			const routeHint = explicitTarget || lastInputText;
 			const assessment = await refreshAssessment(ctx, routeHint);
+			const selectableCandidates = chooseSelectableCandidates(assessment.candidates);
+			let selectedRepo = assessment.selectedRepo;
+
+			if (
+				ctx.hasUI &&
+				shouldPromptForRepoSelection({
+					hasExplicitTarget: explicitTarget.length > 0,
+					selectableCandidates,
+				})
+			) {
+				const choice = await ctx.ui.select(
+					"Choose target repo",
+					selectableCandidates.map((candidate) => `${candidate.repoName} — ${candidate.repoRoot}`),
+				);
+				selectedRepo = selectableCandidates.find((candidate) => `${candidate.repoName} — ${candidate.repoRoot}` === choice);
+			}
+
 			const sessionFile = ctx.sessionManager.getSessionFile();
 			const routeGoal = chooseRouteGoal(args, lastGoalText, lastInputText);
 			const routePlan = buildContextRoutePlan({
-				assessment,
+				assessment: selectedRepo ? { ...assessment, selectedRepo } : assessment,
 				sessionFile,
 				lastInputText: routeGoal,
 			});

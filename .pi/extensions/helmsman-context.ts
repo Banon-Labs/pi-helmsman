@@ -5,6 +5,7 @@ import { chooseRouteGoal, shouldTrackAsGoal } from "./helmsman-context/goal.js";
 import { assessContext, isReadOnlyBashCommand } from "./helmsman-context/heuristics.js";
 import { buildContextRoutePlan } from "./helmsman-context/route.js";
 import { chooseSelectableCandidates, shouldPromptForRepoSelection } from "./helmsman-context/selection.js";
+import { restoreTrackedGoal } from "./helmsman-context/state.js";
 import type { ContextAssessment } from "./helmsman-context/types.js";
 
 const COMMAND_NAME = "context";
@@ -92,17 +93,29 @@ export default function helmsmanContextExtension(pi: ExtensionAPI) {
 		return lastAssessment;
 	}
 
+	function restoreState(ctx: ExtensionContext): void {
+		lastGoalText = restoreTrackedGoal(ctx.sessionManager.getBranch() as Array<{ type: string; customType?: string; data?: { lastGoalText?: string } }>);
+	}
+
+	function persistTrackedGoal(): void {
+		if (!lastGoalText.trim()) return;
+		pi.appendEntry("helmsman-context-state", { lastGoalText });
+	}
+
 	pi.on("session_start", async (_event, ctx) => {
+		restoreState(ctx);
 		await refreshAssessment(ctx, "");
 	});
 
 	pi.on("session_tree", async (_event, ctx) => {
+		restoreState(ctx);
 		await refreshAssessment(ctx, lastInputText);
 	});
 
 	pi.on("input", async (event, ctx) => {
 		if (shouldTrackAsGoal(event.text)) {
 			lastGoalText = event.text.trim();
+			persistTrackedGoal();
 		}
 		await refreshAssessment(ctx, event.text);
 		return { action: "continue" as const };

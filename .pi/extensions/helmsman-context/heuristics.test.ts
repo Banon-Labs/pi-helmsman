@@ -47,6 +47,18 @@ describe("assessContext", () => {
 		expect(result.blockMutations).toBe(true);
 	});
 
+	test("surfaces a suggested working folder when input mentions a subpath in the selected repo", () => {
+		const result = assessContext({
+			workspaceRoot: "/home/choza/projects",
+			currentRepoRoot: "/home/choza/projects/pi-helmsman",
+			inputText: "update /home/choza/projects/pi-mono/packages/coding-agent/docs and make the change there",
+			candidates,
+		});
+
+		expect(result.selectedRepo?.repoName).toBe("pi-mono");
+		expect(result.suggestedFolder).toBe("/home/choza/projects/pi-mono/packages/coding-agent/docs");
+	});
+
 	test("marks context uncertain when no current repo can be resolved", () => {
 		const result = assessContext({
 			workspaceRoot: "/home/choza/projects",

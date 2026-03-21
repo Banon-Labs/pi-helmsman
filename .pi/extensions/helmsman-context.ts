@@ -43,6 +43,7 @@ function formatAssessment(assessment: ContextAssessment): string {
 		`Workspace root: ${assessment.workspaceRoot}`,
 		`Current repo: ${assessment.currentRepoRoot ?? "unresolved"}`,
 		`Selected repo: ${assessment.selectedRepo?.repoRoot ?? "none"}`,
+		`Suggested folder: ${assessment.suggestedFolder ?? "none"}`,
 		`Block mutations: ${assessment.blockMutations ? "yes" : "no"}`,
 		"Candidates:",
 		candidateLines || "(none)",
@@ -218,10 +219,11 @@ export default function helmsmanContextExtension(pi: ExtensionAPI) {
 				? {
 					...assessment,
 					selectedRepo,
-					suggestedFolder: detectSuggestedFolder({
-						targetRepoRoot: selectedRepo.repoRoot,
-						inputText: routeGoal,
-					}),
+					suggestedFolder:
+						detectSuggestedFolder({
+							targetRepoRoot: selectedRepo.repoRoot,
+							inputText: routeGoal,
+						}) ?? assessment.suggestedFolder,
 				}
 				: assessment;
 			const routePlan = buildContextRoutePlan({

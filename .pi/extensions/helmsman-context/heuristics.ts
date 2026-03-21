@@ -1,4 +1,5 @@
 import { scoreCandidateWithWorkspaceEvidence } from "./evidence.js";
+import { detectSuggestedFolder } from "./folders.js";
 import { scoreCandidateWithSignals } from "./ranking.js";
 import type { AssessContextInput, ContextAssessment, RepoCandidate } from "./types.js";
 
@@ -80,11 +81,19 @@ export function assessContext(input: AssessContextInput): ContextAssessment {
 		state = "mismatch";
 	}
 
+	const suggestedFolder = selectedRepo
+		? detectSuggestedFolder({
+			targetRepoRoot: selectedRepo.repoRoot,
+			inputText: input.inputText,
+		})
+		: undefined;
+
 	return {
 		state,
 		workspaceRoot: input.workspaceRoot,
 		currentRepoRoot: input.currentRepoRoot,
 		selectedRepo,
+		suggestedFolder,
 		blockMutations: state !== "healthy",
 		summary: summarize(state, selectedRepo, input.currentRepoRoot),
 		candidates: rankedCandidates,

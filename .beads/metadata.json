@@ -2,6 +2,6 @@
   "database": "dolt",
   "backend": "dolt",
   "dolt_mode": "server",
-  "dolt_database": "aptly_named_project",
-  "project_id": "445efb84-c28a-46a9-8fb8-bfc12776e1a3"
+  "dolt_database": "pi_helmsman",
+  "project_id": "e0f0944d-ccc1-4117-803c-ac8de4db1536"
 }

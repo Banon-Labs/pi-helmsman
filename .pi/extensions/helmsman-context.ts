@@ -5,7 +5,7 @@ import { discoverRepoCandidates, findRepoRoot } from "./helmsman-context/filesys
 import { chooseRouteGoal, shouldTrackAsGoal } from "./helmsman-context/goal.js";
 import { assessContext, isReadOnlyBashCommand } from "./helmsman-context/heuristics.js";
 import { buildContextRoutePlan } from "./helmsman-context/route.js";
-import { chooseSelectableCandidates, shouldPromptForRepoSelection } from "./helmsman-context/selection.js";
+import { chooseSelectableCandidates, formatSelectableCandidateLabel, shouldPromptForRepoSelection } from "./helmsman-context/selection.js";
 import { restoreTrackedGoal } from "./helmsman-context/state.js";
 import type { ContextAssessment } from "./helmsman-context/types.js";
 
@@ -195,11 +195,9 @@ export default function helmsmanContextExtension(pi: ExtensionAPI) {
 					selectableCandidates,
 				})
 			) {
-				const choice = await ctx.ui.select(
-					"Choose target repo",
-					selectableCandidates.map((candidate) => `${candidate.repoName} — ${candidate.repoRoot}`),
-				);
-				selectedRepo = selectableCandidates.find((candidate) => `${candidate.repoName} — ${candidate.repoRoot}` === choice);
+				const options = selectableCandidates.map((candidate) => formatSelectableCandidateLabel(candidate));
+				const choice = await ctx.ui.select("Choose target repo", options);
+				selectedRepo = selectableCandidates.find((candidate) => formatSelectableCandidateLabel(candidate) === choice);
 			}
 
 			const sessionFile = ctx.sessionManager.getSessionFile();

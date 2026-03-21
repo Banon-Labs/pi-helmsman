@@ -11,6 +11,11 @@ export function chooseSelectableCandidates(candidates: RepoCandidate[]): RepoCan
 	return candidates.filter((candidate) => candidate.score === topScore);
 }
 
+export function formatSelectableCandidateLabel(candidate: RepoCandidate): string {
+	const reasons = candidate.reasons.slice(0, 2).join(", ") || "no distinguishing evidence";
+	return `${candidate.repoName} — score=${candidate.score} — ${reasons}`;
+}
+
 export function shouldPromptForRepoSelection(input: RepoSelectionDecisionInput): boolean {
 	return !input.hasExplicitTarget && input.selectableCandidates.length > 1;
 }

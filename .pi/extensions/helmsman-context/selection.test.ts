@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { chooseSelectableCandidates, shouldPromptForRepoSelection } from "./selection.ts";
+import { chooseSelectableCandidates, formatSelectableCandidateLabel, shouldPromptForRepoSelection } from "./selection.ts";
 import type { RepoCandidate } from "./types.ts";
 
 const helmsman: RepoCandidate = {
@@ -38,6 +38,16 @@ describe("chooseSelectableCandidates", () => {
 	test("returns a single candidate when there is a clear leader", () => {
 		const result = chooseSelectableCandidates([{ ...mono, score: 80 }, helmsman, deadlock]);
 		expect(result.map((candidate) => candidate.repoName)).toEqual(["pi-mono"]);
+	});
+});
+
+describe("formatSelectableCandidateLabel", () => {
+	test("includes repo name, score, and top reasons in a compact label", () => {
+		const label = formatSelectableCandidateLabel(helmsman);
+		expect(label).toContain("pi-helmsman");
+		expect(label).toContain("score=60");
+		expect(label).toContain("current repo, has .beads");
+		expect(label).not.toContain("/home/choza/projects/pi-helmsman");
 	});
 });
 

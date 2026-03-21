@@ -2,3 +2,6 @@
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+
+# Local Pi materialized remote reference cache
+.pi/remote-refs/

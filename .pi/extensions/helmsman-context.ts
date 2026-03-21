@@ -2,6 +2,7 @@ import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionContext, ToolCallEvent } from "@mariozechner/pi-coding-agent";
 import { collectWorkspaceEvidence } from "./helmsman-context/evidence.js";
 import { discoverRepoCandidates, findRepoRoot } from "./helmsman-context/filesystem.js";
+import { detectSuggestedFolder } from "./helmsman-context/folders.js";
 import { chooseRouteGoal, shouldTrackAsGoal } from "./helmsman-context/goal.js";
 import { assessContext, isReadOnlyBashCommand } from "./helmsman-context/heuristics.js";
 import { buildContextRoutePlan } from "./helmsman-context/route.js";
@@ -213,8 +214,18 @@ export default function helmsmanContextExtension(pi: ExtensionAPI) {
 
 			const sessionFile = ctx.sessionManager.getSessionFile();
 			const routeGoal = chooseRouteGoal(args, lastGoalText, lastInputText);
+			const routedAssessment = selectedRepo
+				? {
+					...assessment,
+					selectedRepo,
+					suggestedFolder: detectSuggestedFolder({
+						targetRepoRoot: selectedRepo.repoRoot,
+						inputText: routeGoal,
+					}),
+				}
+				: assessment;
 			const routePlan = buildContextRoutePlan({
-				assessment: selectedRepo ? { ...assessment, selectedRepo } : assessment,
+				assessment: routedAssessment,
 				sessionFile,
 				lastInputText: routeGoal,
 			});

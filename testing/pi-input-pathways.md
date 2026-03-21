@@ -52,6 +52,20 @@ Compact reference for reproducible smoke tests and future session reuse.
   - send prompt text
   - submit with `Enter`
 
+## Deterministic selection-prompt sandbox
+
+- Helper: `testing/pi-selection-sandbox.sh`
+- Purpose: force the `/context-switch` repo-selection UI path in a controlled tmux sandbox.
+- Strategy:
+  - start pi from a **non-repo** working directory
+  - create two sibling fake git repos under the same workspace root
+  - submit a neutral goal so neither repo gets an input-based edge
+  - run `/context-switch` with no explicit target
+  - capture pane state **before** selection and **after** accepting the first option
+- Expected proof:
+  - before-select capture shows `Choose target repo`
+  - after-select capture shows `Explicit context-correction flow:` with the chosen repo
+
 ## Sources
 
 - `pi --help`

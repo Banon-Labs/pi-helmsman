@@ -1,5 +1,6 @@
 import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionContext, ToolCallEvent } from "@mariozechner/pi-coding-agent";
+import { collectWorkspaceEvidence } from "./helmsman-context/evidence.js";
 import { discoverRepoCandidates, findRepoRoot } from "./helmsman-context/filesystem.js";
 import { chooseRouteGoal, shouldTrackAsGoal } from "./helmsman-context/goal.js";
 import { assessContext, isReadOnlyBashCommand } from "./helmsman-context/heuristics.js";
@@ -63,11 +64,17 @@ function updateStatus(ctx: ExtensionContext, assessment: ContextAssessment | und
 	ctx.ui.setStatus("helmsman-context", ctx.ui.theme.fg("warning", `ctx:${assessment.state}`));
 }
 
-async function computeAssessment(cwd: string, inputText: string, lastGoalText: string): Promise<ContextAssessment> {
+async function computeAssessment(
+	cwd: string,
+	inputText: string,
+	lastGoalText: string,
+	sessionPath?: string,
+): Promise<ContextAssessment> {
 	const currentRepoRoot = findRepoRoot(cwd);
 	const workspaceRoot = getWorkspaceRoot(cwd);
 	const candidates = await discoverRepoCandidates(workspaceRoot, currentRepoRoot);
-	return assessContext({ workspaceRoot, currentRepoRoot, inputText, lastGoalText, candidates });
+	const workspaceEvidenceText = collectWorkspaceEvidence({ sessionPath }).text;
+	return assessContext({ workspaceRoot, currentRepoRoot, inputText, lastGoalText, workspaceEvidenceText, candidates });
 }
 
 function isMutatingToolCall(event: ToolCallEvent): boolean {
@@ -88,7 +95,7 @@ export default function helmsmanContextExtension(pi: ExtensionAPI) {
 
 	async function refreshAssessment(ctx: ExtensionContext, inputText = lastInputText) {
 		lastInputText = inputText;
-		lastAssessment = await computeAssessment(ctx.cwd, inputText, lastGoalText);
+		lastAssessment = await computeAssessment(ctx.cwd, inputText, lastGoalText, ctx.sessionManager.getSessionFile());
 		updateStatus(ctx, lastAssessment);
 		return lastAssessment;
 	}

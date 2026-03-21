@@ -22,6 +22,12 @@ bd dolt push          # Push beads data to remote
 - Prefer TDD for every task: add or update a small failing test first when practical, then implement the minimal code change to make it pass.
 - Keep tests and production changes scoped, atomic, and easy to validate.
 
+## Reuse-Oriented Architecture Preference
+
+- When paving new ground, prefer extracting small pure/testable modules as patterns become clear so they can be lifted out later.
+- Keep runtime wiring, UI decisions, and project-specific policy local until the behavior stabilizes; avoid premature framework/generalization work.
+- Good extraction candidates are small helpers for scoring, selection, route planning, evidence collection, and state restoration.
+
 ## Non-Interactive Shell Commands
 
 **ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.

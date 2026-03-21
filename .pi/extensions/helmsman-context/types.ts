@@ -24,5 +24,6 @@ export interface AssessContextInput {
 	currentRepoRoot?: string;
 	inputText: string;
 	lastGoalText?: string;
+	workspaceEvidenceText?: string;
 	candidates: RepoCandidate[];
 }

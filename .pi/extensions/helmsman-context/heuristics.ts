@@ -1,3 +1,4 @@
+import { scoreCandidateWithWorkspaceEvidence } from "./evidence.js";
 import { scoreCandidateWithSignals } from "./ranking.js";
 import type { AssessContextInput, ContextAssessment, RepoCandidate } from "./types.js";
 
@@ -30,6 +31,7 @@ function normalizeText(text: string): string {
 }
 
 function rankCandidates(
+	input: AssessContextInput,
 	candidates: RepoCandidate[],
 	inputText: string,
 	currentRepoRoot: string | undefined,
@@ -37,11 +39,14 @@ function rankCandidates(
 ): RepoCandidate[] {
 	return candidates
 		.map((candidate) =>
-			scoreCandidateWithSignals(candidate, {
-				currentRepoRoot,
-				inputText,
-				lastGoalText,
-			}),
+			scoreCandidateWithWorkspaceEvidence(
+				scoreCandidateWithSignals(candidate, {
+					currentRepoRoot,
+					inputText,
+					lastGoalText,
+				}),
+				input.workspaceEvidenceText ?? "",
+			),
 		)
 		.sort((a, b) => b.score - a.score || a.repoName.localeCompare(b.repoName));
 }
@@ -62,7 +67,7 @@ function summarize(state: ContextAssessment["state"], selectedRepo: RepoCandidat
 }
 
 export function assessContext(input: AssessContextInput): ContextAssessment {
-	const rankedCandidates = rankCandidates(input.candidates, input.inputText, input.currentRepoRoot, input.lastGoalText ?? "");
+	const rankedCandidates = rankCandidates(input, input.candidates, input.inputText, input.currentRepoRoot, input.lastGoalText ?? "");
 	const explicitRepo = findExplicitRepoMention(rankedCandidates, input.inputText);
 	const selectedRepo = explicitRepo ?? rankedCandidates[0];
 

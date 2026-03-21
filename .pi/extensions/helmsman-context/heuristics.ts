@@ -1,3 +1,4 @@
+import { scoreCandidateWithSignals } from "./ranking.js";
 import type { AssessContextInput, ContextAssessment, RepoCandidate } from "./types.js";
 
 const READ_ONLY_PREFIXES = [
@@ -28,28 +29,20 @@ function normalizeText(text: string): string {
 	return text.toLowerCase();
 }
 
-function scoreCandidate(candidate: RepoCandidate, inputText: string, currentRepoRoot: string | undefined): RepoCandidate {
-	const reasons: string[] = [];
-	let score = 0;
-	const normalized = normalizeText(inputText);
-	if (candidate.repoRoot === currentRepoRoot) {
-		score += 40;
-		reasons.push("current repo");
-	}
-	if (candidate.hasBeads) {
-		score += 20;
-		reasons.push("has .beads");
-	}
-	if (normalized.includes(candidate.repoName.toLowerCase())) {
-		score += 60;
-		reasons.push("repo name mentioned in input");
-	}
-	return { ...candidate, score, reasons };
-}
-
-function rankCandidates(candidates: RepoCandidate[], inputText: string, currentRepoRoot: string | undefined): RepoCandidate[] {
+function rankCandidates(
+	candidates: RepoCandidate[],
+	inputText: string,
+	currentRepoRoot: string | undefined,
+	lastGoalText: string,
+): RepoCandidate[] {
 	return candidates
-		.map((candidate) => scoreCandidate(candidate, inputText, currentRepoRoot))
+		.map((candidate) =>
+			scoreCandidateWithSignals(candidate, {
+				currentRepoRoot,
+				inputText,
+				lastGoalText,
+			}),
+		)
 		.sort((a, b) => b.score - a.score || a.repoName.localeCompare(b.repoName));
 }
 
@@ -69,7 +62,7 @@ function summarize(state: ContextAssessment["state"], selectedRepo: RepoCandidat
 }
 
 export function assessContext(input: AssessContextInput): ContextAssessment {
-	const rankedCandidates = rankCandidates(input.candidates, input.inputText, input.currentRepoRoot);
+	const rankedCandidates = rankCandidates(input.candidates, input.inputText, input.currentRepoRoot, input.lastGoalText ?? "");
 	const explicitRepo = findExplicitRepoMention(rankedCandidates, input.inputText);
 	const selectedRepo = explicitRepo ?? rankedCandidates[0];
 

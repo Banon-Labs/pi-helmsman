@@ -63,11 +63,11 @@ function updateStatus(ctx: ExtensionContext, assessment: ContextAssessment | und
 	ctx.ui.setStatus("helmsman-context", ctx.ui.theme.fg("warning", `ctx:${assessment.state}`));
 }
 
-async function computeAssessment(cwd: string, inputText: string): Promise<ContextAssessment> {
+async function computeAssessment(cwd: string, inputText: string, lastGoalText: string): Promise<ContextAssessment> {
 	const currentRepoRoot = findRepoRoot(cwd);
 	const workspaceRoot = getWorkspaceRoot(cwd);
 	const candidates = await discoverRepoCandidates(workspaceRoot, currentRepoRoot);
-	return assessContext({ workspaceRoot, currentRepoRoot, inputText, candidates });
+	return assessContext({ workspaceRoot, currentRepoRoot, inputText, lastGoalText, candidates });
 }
 
 function isMutatingToolCall(event: ToolCallEvent): boolean {
@@ -88,7 +88,7 @@ export default function helmsmanContextExtension(pi: ExtensionAPI) {
 
 	async function refreshAssessment(ctx: ExtensionContext, inputText = lastInputText) {
 		lastInputText = inputText;
-		lastAssessment = await computeAssessment(ctx.cwd, inputText);
+		lastAssessment = await computeAssessment(ctx.cwd, inputText, lastGoalText);
 		updateStatus(ctx, lastAssessment);
 		return lastAssessment;
 	}

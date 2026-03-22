@@ -57,6 +57,8 @@ describe("assessContext", () => {
 
 		expect(result.selectedRepo?.repoName).toBe("pi-mono");
 		expect(result.suggestedFolder).toBe("/home/choza/projects/pi-mono/packages/coding-agent/docs");
+		expect(result.suggestedFolderSource).toBe("absolute");
+		expect(result.suggestedFolderBasis).toBe("directory");
 	});
 
 	test("marks context uncertain when no current repo can be resolved", () => {

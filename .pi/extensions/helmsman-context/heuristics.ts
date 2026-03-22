@@ -95,6 +95,7 @@ export function assessContext(input: AssessContextInput): ContextAssessment {
 		selectedRepo,
 		suggestedFolder: suggestedFolderHint?.path,
 		suggestedFolderSource: suggestedFolderHint?.source,
+		suggestedFolderBasis: suggestedFolderHint?.basis,
 		blockMutations: state !== "healthy",
 		summary: summarize(state, selectedRepo, input.currentRepoRoot),
 		candidates: rankedCandidates,

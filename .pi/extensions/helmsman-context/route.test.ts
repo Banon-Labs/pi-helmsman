@@ -42,6 +42,7 @@ describe("buildContextRoutePlan", () => {
 				...mismatchAssessment,
 				suggestedFolder: "/home/choza/projects/pi-mono/packages/coding-agent/docs",
 				suggestedFolderSource: "absolute",
+				suggestedFolderBasis: "file-parent",
 			},
 			sessionFile: "/home/choza/.pi/agent/sessions/abc.jsonl",
 			lastInputText: "update docs in packages/coding-agent/docs",
@@ -54,6 +55,7 @@ describe("buildContextRoutePlan", () => {
 			"Suggested working folder: /home/choza/projects/pi-mono/packages/coding-agent/docs",
 		);
 		expect(plan.handoffPrompt).toContain("Suggested folder source: absolute");
+		expect(plan.handoffPrompt).toContain("Suggested folder basis: file-parent");
 	});
 
 	test("returns undefined when no target repo is available", () => {

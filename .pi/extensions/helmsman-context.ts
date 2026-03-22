@@ -45,6 +45,7 @@ function formatAssessment(assessment: ContextAssessment): string {
 		`Selected repo: ${assessment.selectedRepo?.repoRoot ?? "none"}`,
 		`Suggested folder: ${assessment.suggestedFolder ?? "none"}`,
 		`Suggested folder source: ${assessment.suggestedFolderSource ?? "none"}`,
+		`Suggested folder basis: ${assessment.suggestedFolderBasis ?? "none"}`,
 		`Block mutations: ${assessment.blockMutations ? "yes" : "no"}`,
 		"Candidates:",
 		candidateLines || "(none)",
@@ -216,20 +217,19 @@ export default function helmsmanContextExtension(pi: ExtensionAPI) {
 
 			const sessionFile = ctx.sessionManager.getSessionFile();
 			const routeGoal = chooseRouteGoal(args, lastGoalText, lastInputText);
+			const routeFolderHint = selectedRepo
+				? detectSuggestedFolder({
+						targetRepoRoot: selectedRepo.repoRoot,
+						inputText: routeGoal,
+					})
+				: undefined;
 			const routedAssessment = selectedRepo
 				? {
 					...assessment,
 					selectedRepo,
-					suggestedFolder:
-						detectSuggestedFolder({
-							targetRepoRoot: selectedRepo.repoRoot,
-							inputText: routeGoal,
-						})?.path ?? assessment.suggestedFolder,
-					suggestedFolderSource:
-						detectSuggestedFolder({
-							targetRepoRoot: selectedRepo.repoRoot,
-							inputText: routeGoal,
-						})?.source ?? assessment.suggestedFolderSource,
+					suggestedFolder: routeFolderHint?.path ?? assessment.suggestedFolder,
+					suggestedFolderSource: routeFolderHint?.source ?? assessment.suggestedFolderSource,
+					suggestedFolderBasis: routeFolderHint?.basis ?? assessment.suggestedFolderBasis,
 				}
 				: assessment;
 			const routePlan = buildContextRoutePlan({

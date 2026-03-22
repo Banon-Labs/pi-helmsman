@@ -79,6 +79,24 @@ describe("assessContext", () => {
 		expect(result.blockMutations).toBe(false);
 	});
 
+	test("does not switch repos when another repo is mentioned only as a read-only reference", () => {
+		const currentCandidate = makeCandidate("pi-helmsman", { hasBeads: true, isCurrent: true });
+		const cupcakeCandidate = makeCandidate("cupcake");
+
+		const result = assessContext({
+			workspaceRoot: dirname(currentCandidate.repoRoot),
+			currentRepoRoot: currentCandidate.repoRoot,
+			inputText: "keep working here and use cupcake as a read-only reference repo",
+			lastGoalText: "use cupcake as a local reference repo while staying in pi-helmsman",
+			workspaceEvidenceText: currentCandidate.repoName,
+			candidates: [currentCandidate, cupcakeCandidate],
+		});
+
+		expect(result.state).toBe("healthy");
+		expect(result.selectedRepo?.repoRoot).toBe(currentCandidate.repoRoot);
+		expect(result.blockMutations).toBe(false);
+	});
+
 	test("renders confidence labels for strong and weak candidates", () => {
 		const currentCandidate = makeCandidate("pi-helmsman", { hasBeads: true, isCurrent: true });
 		const beadsCandidate = makeCandidate("beads", { hasBeads: true });

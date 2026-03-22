@@ -62,16 +62,25 @@ function hasCrossRepoActionIntent(inputText: string): boolean {
 		|| /\b(?:make the change there|implement the change there|work there)\b/i.test(inputText);
 }
 
-function hasStrongMismatchEvidence(candidate: RepoCandidate | undefined, inputText: string): boolean {
+function hasReadOnlyReferenceIntent(text: string): boolean {
+	return /\b(?:read[ -]?only|readonly|reference(?: repo)?|for reference|as reference|local reference)\b/i.test(text);
+}
+
+function hasStrongMismatchEvidence(candidate: RepoCandidate | undefined, inputText: string, lastGoalText: string): boolean {
 	if (!candidate) return false;
+	if (hasReadOnlyReferenceIntent(inputText) || hasReadOnlyReferenceIntent(lastGoalText)) {
+		return false;
+	}
 	if (candidate.reasons.some((reason) =>
 		reason === "repo path mentioned in input"
-		|| reason === "repo-relative directory path exists in candidate"
-		|| reason === "repo-relative file path exists in candidate",
-	)) {
+			|| reason === "repo-relative directory path exists in candidate"
+			|| reason === "repo-relative file path exists in candidate")) {
 		return true;
 	}
-	return candidate.reasons.includes("repo name mentioned in input") && hasCrossRepoActionIntent(inputText);
+	return (
+		(candidate.reasons.includes("repo name mentioned in input") && hasCrossRepoActionIntent(inputText))
+		|| (candidate.reasons.includes("repo work intent mentioned in goal") && hasCrossRepoActionIntent(lastGoalText))
+	);
 }
 
 function summarize(state: ContextAssessment["state"], selectedRepo: RepoCandidate | undefined, currentRepoRoot: string | undefined) {
@@ -100,25 +109,26 @@ function explainDecision(selectedRepo: RepoCandidate | undefined, currentRepoCan
 }
 
 export function assessContext(input: AssessContextInput): ContextAssessment {
-	const rankedCandidates = rankCandidates(input, input.candidates, input.inputText, input.currentRepoRoot, input.lastGoalText ?? "");
+	const lastGoalText = input.lastGoalText ?? "";
+	const rankedCandidates = rankCandidates(input, input.candidates, input.inputText, input.currentRepoRoot, lastGoalText);
 	const explicitRepo = findExplicitRepoMention(rankedCandidates, input.inputText);
 	const currentRepoCandidate = input.currentRepoRoot
 		? rankedCandidates.find((candidate) => candidate.repoRoot === input.currentRepoRoot)
 		: undefined;
-	const selectedRepo = explicitRepo && hasStrongMismatchEvidence(explicitRepo, input.inputText)
+	const selectedRepo = explicitRepo && hasStrongMismatchEvidence(explicitRepo, input.inputText, lastGoalText)
 		? explicitRepo
 		: rankedCandidates[0];
 
 	let state: ContextAssessment["state"] = "healthy";
 	if (!input.currentRepoRoot) {
 		state = "uncertain";
-	} else if (explicitRepo && explicitRepo.repoRoot !== input.currentRepoRoot && hasStrongMismatchEvidence(explicitRepo, input.inputText)) {
+	} else if (explicitRepo && explicitRepo.repoRoot !== input.currentRepoRoot && hasStrongMismatchEvidence(explicitRepo, input.inputText, lastGoalText)) {
 		state = "mismatch";
 	} else if (
 		selectedRepo
 		&& selectedRepo.repoRoot !== input.currentRepoRoot
 		&& selectedRepo.score >= 60
-		&& hasStrongMismatchEvidence(selectedRepo, input.inputText)
+		&& hasStrongMismatchEvidence(selectedRepo, input.inputText, lastGoalText)
 	) {
 		state = "mismatch";
 	}

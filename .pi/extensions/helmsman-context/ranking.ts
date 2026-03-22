@@ -16,6 +16,10 @@ function hasCrossRepoActionIntent(inputText: string): boolean {
 		|| /\b(?:make the change there|implement the change there|work there)\b/i.test(inputText);
 }
 
+function hasReadOnlyReferenceIntent(text: string): boolean {
+	return /\b(?:read[ -]?only|readonly|reference(?: repo)?|for reference|as reference|local reference)\b/i.test(text);
+}
+
 function scoreRelativePathEvidence(repoRoot: string, inputText: string): { score: number; reason?: string } {
 	const hint = detectSuggestedFolder({ targetRepoRoot: repoRoot, inputText });
 	if (!hint || hint.source !== "relative") return { score: 0 };
@@ -51,14 +55,27 @@ export function scoreCandidateWithSignals(candidate: RepoCandidate, signals: Ran
 		reasons.push("repo path mentioned in input");
 	}
 	if (includesCaseInsensitive(signals.lastGoalText, candidate.repoName)) {
-		score += 70;
-		reasons.push("repo name mentioned in goal");
+		if (hasReadOnlyReferenceIntent(signals.lastGoalText)) {
+			score += 5;
+			reasons.push("repo mentioned as read-only reference in goal");
+		} else if (hasCrossRepoActionIntent(signals.lastGoalText)) {
+			score += 70;
+			reasons.push("repo work intent mentioned in goal");
+		} else {
+			score += 20;
+			reasons.push("repo name mentioned in goal");
+		}
 	} else if (includesCaseInsensitive(signals.inputText, candidate.repoName)) {
-		score += 10;
-		reasons.push("repo name mentioned in input");
-		if (hasCrossRepoActionIntent(signals.inputText)) {
-			score += 50;
-			reasons.push("cross-repo action intent in input");
+		if (hasReadOnlyReferenceIntent(signals.inputText)) {
+			score += 5;
+			reasons.push("repo mentioned as read-only reference in input");
+		} else {
+			score += 10;
+			reasons.push("repo name mentioned in input");
+			if (hasCrossRepoActionIntent(signals.inputText)) {
+				score += 50;
+				reasons.push("cross-repo action intent in input");
+			}
 		}
 	}
 	const relativePathEvidence = scoreRelativePathEvidence(candidate.repoRoot, signals.inputText);

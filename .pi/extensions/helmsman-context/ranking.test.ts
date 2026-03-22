@@ -33,8 +33,19 @@ describe("scoreCandidateWithSignals", () => {
 			lastGoalText: "continue work in pi-helmsman",
 		});
 
-		expect(result.score).toBeGreaterThan(50);
-		expect(result.reasons).toContain("repo name mentioned in goal");
+		expect(result.score).toBeGreaterThan(10);
+		expect(result.reasons).toContain("repo work intent mentioned in goal");
+	});
+
+	test("treats read-only reference repo mentions in the goal as non-decisive", () => {
+		const result = scoreCandidateWithSignals(baseCandidate, {
+			currentRepoRoot: "/home/choza/projects/pi-mono",
+			inputText: "continue current work here",
+			lastGoalText: "use pi-helmsman as a read-only reference repo",
+		});
+
+		expect(result.score).toBe(25);
+		expect(result.reasons).toContain("repo mentioned as read-only reference in goal");
 	});
 
 	test("rewards current repo continuity", () => {

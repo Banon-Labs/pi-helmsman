@@ -14,12 +14,17 @@ bd dolt push          # Push beads data to remote
 
 ## Token-Efficient Read-Only Inspection
 
-- Prefer RTK wrappers first for read-only inspection commands because they trim tokens and keep outputs compact.
-- Preferred forms when applicable:
-  - file reads: `rtk read <path>`
-  - git inspection: `rtk git status`, `rtk git diff`, `rtk git log`, `rtk git show`, `rtk git branch`
-  - search/discovery: `rtk find ...`, `rtk grep ...`, `rtk ls ...`
-- Use native commands when mutation/control behavior matters, when RTK lacks the needed subcommand/flags, or when the non-RTK form is required for correctness.
+- Default rule: for read-only inspection commands, use the RTK wrapper first unless there is a specific reason not to.
+- Treat this as the normal mapping for Pi sessions in this repo:
+  - file reads → `rtk read <path>`
+  - git inspection → `rtk git status`, `rtk git diff`, `rtk git log`, `rtk git show`, `rtk git branch`
+  - search/discovery → `rtk find ...`, `rtk grep ...`, `rtk ls ...`
+- Before using native `git status`, `git diff`, `find`, `grep`, `ls`, or shell-based file reads for inspection, first ask: "Is there an RTK form for this?" If yes, prefer the RTK form.
+- Allowed exceptions:
+  - mutation/control behavior matters,
+  - RTK lacks the needed subcommand or flags,
+  - the native command is required for correctness or exact scripting behavior.
+- If you do use the native form for a read-only inspection path that has an RTK equivalent, keep it intentional and exception-based rather than habitual.
 - Keep using non-mutating inspection paths unless the task explicitly requires mutation.
 
 ## Test-Driven Development Preference

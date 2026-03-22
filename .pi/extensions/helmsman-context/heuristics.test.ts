@@ -101,7 +101,27 @@ describe("assessContext", () => {
 		});
 
 		expect(result.selectedRepo?.repoRoot).toBe(targetCandidate.repoRoot);
-		expect(result.selectedRepo?.reasons).toContain("repo-relative path exists in candidate");
+		expect(result.selectedRepo?.reasons).toContain("repo-relative directory path exists in candidate");
+		expect(result.state).toBe("mismatch");
+	});
+
+	test("prefers a candidate with matching repo-relative file evidence over ambient current-repo bias", () => {
+		const currentCandidate = makeCandidate("pi-helmsman", { hasBeads: true, isCurrent: true });
+		const targetCandidate = makeCandidate("pi-mono");
+		const docsDir = join(targetCandidate.repoRoot, "packages/coding-agent/docs");
+		mkdirSync(docsDir, { recursive: true });
+		Bun.write(join(docsDir, "extensions.md"), "# docs\n");
+
+		const result = assessContext({
+			workspaceRoot: dirname(targetCandidate.repoRoot),
+			currentRepoRoot: currentCandidate.repoRoot,
+			inputText: "update packages/coding-agent/docs/extensions.md and make the change there",
+			workspaceEvidenceText: currentCandidate.repoName,
+			candidates: [currentCandidate, targetCandidate],
+		});
+
+		expect(result.selectedRepo?.repoRoot).toBe(targetCandidate.repoRoot);
+		expect(result.selectedRepo?.reasons).toContain("repo-relative file path exists in candidate");
 		expect(result.state).toBe("mismatch");
 	});
 });

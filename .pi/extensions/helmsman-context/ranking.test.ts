@@ -57,7 +57,7 @@ describe("scoreCandidateWithSignals", () => {
 		expect(result.reasons).toContain("repo path mentioned in input");
 	});
 
-	test("rewards repo-relative folder evidence when the path exists in the candidate repo", () => {
+	test("rewards exact repo-relative directory evidence most strongly", () => {
 		const candidate = makeRepoCandidate("pi-mono");
 		mkdirSync(join(candidate.repoRoot, "packages/coding-agent/docs"), { recursive: true });
 
@@ -67,13 +67,32 @@ describe("scoreCandidateWithSignals", () => {
 			lastGoalText: "",
 		});
 
-		expect(result.reasons).toContain("repo-relative path exists in candidate");
+		expect(result.reasons).toContain("repo-relative directory path exists in candidate");
 		expect(result.score).toBeGreaterThan(0);
 	});
 
-	test("does not reward repo-relative folder evidence when the path is absent in the candidate repo", () => {
-		const candidate = makeRepoCandidate("deadlock-VA");
-		mkdirSync(join(candidate.repoRoot, "src/components"), { recursive: true });
+	test("rewards repo-relative file evidence less strongly than an exact directory match", () => {
+		const candidate = makeRepoCandidate("pi-mono");
+		mkdirSync(join(candidate.repoRoot, "packages/coding-agent/docs"), { recursive: true });
+		Bun.write(join(candidate.repoRoot, "packages/coding-agent/docs/extensions.md"), "# docs\n");
+
+		const fileResult = scoreCandidateWithSignals(candidate, {
+			currentRepoRoot: "/home/choza/projects/pi-helmsman",
+			inputText: "update packages/coding-agent/docs/extensions.md and make the change there",
+			lastGoalText: "",
+		});
+		const directoryResult = scoreCandidateWithSignals(candidate, {
+			currentRepoRoot: "/home/choza/projects/pi-helmsman",
+			inputText: "update packages/coding-agent/docs and make the change there",
+			lastGoalText: "",
+		});
+
+		expect(fileResult.reasons).toContain("repo-relative file path exists in candidate");
+		expect(fileResult.score).toBeLessThan(directoryResult.score);
+	});
+
+	test("does not reward unverified repo-relative path evidence strongly enough to look decisive", () => {
+		const candidate = makeRepoCandidate("pi-mono");
 
 		const result = scoreCandidateWithSignals(candidate, {
 			currentRepoRoot: "/home/choza/projects/pi-helmsman",
@@ -81,6 +100,7 @@ describe("scoreCandidateWithSignals", () => {
 			lastGoalText: "",
 		});
 
-		expect(result.reasons).not.toContain("repo-relative path exists in candidate");
+		expect(result.reasons).toContain("repo-relative path is unverified in candidate");
+		expect(result.score).toBeLessThan(50);
 	});
 });

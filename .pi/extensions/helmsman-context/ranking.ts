@@ -1,5 +1,4 @@
-import { existsSync } from "node:fs";
-import { join, normalize } from "node:path";
+import { detectSuggestedFolder } from "./folders.js";
 import type { RepoCandidate } from "./types.js";
 
 export interface RankingSignals {
@@ -8,24 +7,29 @@ export interface RankingSignals {
 	lastGoalText: string;
 }
 
-const RELATIVE_PATH_PATTERN = /\b([a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)+)\b/g;
-
 function includesCaseInsensitive(haystack: string, needle: string): boolean {
 	return haystack.toLowerCase().includes(needle.toLowerCase());
 }
 
-function extractRepoRelativePathHints(text: string): string[] {
-	const hints = new Set<string>();
-	for (const match of text.matchAll(RELATIVE_PATH_PATTERN)) {
-		const candidate = match[1] ?? "";
-		if (!candidate || candidate.startsWith("./") || candidate.startsWith("../")) continue;
-		hints.add(candidate);
+function scoreRelativePathEvidence(repoRoot: string, inputText: string): { score: number; reason?: string } {
+	const hint = detectSuggestedFolder({ targetRepoRoot: repoRoot, inputText });
+	if (!hint || hint.source !== "relative") return { score: 0 };
+	if (hint.basis === "directory") {
+		return {
+			score: 120,
+			reason: "repo-relative directory path exists in candidate",
+		};
 	}
-	return Array.from(hints);
-}
-
-function hasMatchingRepoRelativePath(repoRoot: string, inputText: string): boolean {
-	return extractRepoRelativePathHints(inputText).some((hint) => existsSync(normalize(join(repoRoot, hint))));
+	if (hint.basis === "file-parent") {
+		return {
+			score: 110,
+			reason: "repo-relative file path exists in candidate",
+		};
+	}
+	return {
+		score: 10,
+		reason: "repo-relative path is unverified in candidate",
+	};
 }
 
 export function scoreCandidateWithSignals(candidate: RepoCandidate, signals: RankingSignals): RepoCandidate {
@@ -51,9 +55,10 @@ export function scoreCandidateWithSignals(candidate: RepoCandidate, signals: Ran
 		score += 60;
 		reasons.push("repo name mentioned in input");
 	}
-	if (hasMatchingRepoRelativePath(candidate.repoRoot, signals.inputText)) {
-		score += 100;
-		reasons.push("repo-relative path exists in candidate");
+	const relativePathEvidence = scoreRelativePathEvidence(candidate.repoRoot, signals.inputText);
+	if (relativePathEvidence.score > 0) {
+		score += relativePathEvidence.score;
+		if (relativePathEvidence.reason) reasons.push(relativePathEvidence.reason);
 	}
 
 	return { ...candidate, score, reasons };

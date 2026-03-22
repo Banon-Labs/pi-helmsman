@@ -13,6 +13,12 @@ import {
 import { parseWorkflowPlanFromText } from "./helmsman-workflow/parse-plan.js";
 import { describePlannerRuntime } from "./helmsman-workflow/runtime.js";
 import {
+	getBashSafetyPrompt,
+	getPlanModeBashBlockReason,
+	getProtectedPathPrompt,
+	getUnexpectedFileSpreadReason,
+} from "./helmsman-workflow/safety.js";
+import {
 	createDefaultWorkflowState,
 	formatWorkflowStatus,
 	mergeWorkflowPlanState,
@@ -63,6 +69,20 @@ function parseApprovalArg(args: string): WorkflowApprovalState | undefined {
 	const value = args.trim().toLowerCase();
 	if (!value || value === "approved" || value === "approve") return "approved";
 	if (value === "draft") return "draft";
+	return undefined;
+}
+
+async function confirmOrBlock(
+	ctx: ExtensionContext,
+	prompt: { title: string; message: string; reason: string },
+): Promise<{ block: true; reason: string } | undefined> {
+	if (!ctx.hasUI) {
+		return { block: true, reason: `${prompt.reason} Blocked because no interactive confirmation UI is available.` };
+	}
+	const confirmed = await ctx.ui.confirm(prompt.title, prompt.message);
+	if (!confirmed) {
+		return { block: true, reason: `${prompt.reason} Blocked by user.` };
+	}
 	return undefined;
 }
 
@@ -133,6 +153,72 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 				customType: CUSTOM_MESSAGE_TYPE,
 				content: `[HELMSMAN PLAN MODE]\nTreat the current user request as a planning task, not an execution task. Ask clarifying questions with the questionnaire tool if key requirements are missing. Prefer read-only repo exploration with read, grep, find, ls, bash, and fetch_reference. Produce a concise draft plan with explicit sections for Goal, Constraints, Assumptions, Target Files, Current Phase, Plan, Verification Notes, and Approval State. Keep each phase to 3-5 steps and leave approval state as draft.`,
 				display: false,
+			},
+		};
+	});
+
+	pi.on("tool_call", async (event, ctx) => {
+		if (event.toolName === "bash") {
+			const command = String((event.input as { command?: string }).command ?? "");
+			const planModeBlockReason = workflowState.mode === "plan" ? getPlanModeBashBlockReason(command) : undefined;
+			if (planModeBlockReason) return { block: true, reason: planModeBlockReason };
+			const bashPrompt = getBashSafetyPrompt(command);
+			if (bashPrompt) return confirmOrBlock(ctx, bashPrompt);
+		}
+
+		if (event.toolName === "edit" || event.toolName === "write") {
+			const path = String((event.input as { path?: string }).path ?? "");
+			const unexpectedFileSpreadReason =
+				workflowState.mode === "build" && workflowState.plan.approvalState === "approved"
+					? getUnexpectedFileSpreadReason(path, workflowState.plan.targetFiles)
+					: undefined;
+			if (unexpectedFileSpreadReason) {
+				workflowState = updateWorkflowApprovalState(updateWorkflowMode(workflowState, "plan"), "draft");
+				persistState(pi, workflowState);
+				syncActiveTools(pi, workflowState.mode);
+				updateFooterStatus(ctx, workflowState);
+				ctx.ui.notify(unexpectedFileSpreadReason, "warning");
+				publishStatus(pi, workflowState, Boolean(ctx.model));
+				return { block: true, reason: unexpectedFileSpreadReason };
+			}
+			const protectedPathPrompt = getProtectedPathPrompt(path);
+			if (protectedPathPrompt) return confirmOrBlock(ctx, protectedPathPrompt);
+		}
+	});
+
+	pi.on("user_bash", async (event, ctx) => {
+		const planModeBlockReason = workflowState.mode === "plan" ? getPlanModeBashBlockReason(event.command) : undefined;
+		if (planModeBlockReason) {
+			return {
+				result: {
+					output: planModeBlockReason,
+					exitCode: 1,
+					cancelled: false,
+					truncated: false,
+				},
+			};
+		}
+
+		const bashPrompt = getBashSafetyPrompt(event.command);
+		if (!bashPrompt) return;
+		if (!ctx.hasUI) {
+			return {
+				result: {
+					output: `${bashPrompt.reason} Blocked because no interactive confirmation UI is available.`,
+					exitCode: 1,
+					cancelled: false,
+					truncated: false,
+				},
+			};
+		}
+		const confirmed = await ctx.ui.confirm(bashPrompt.title, bashPrompt.message);
+		if (confirmed) return;
+		return {
+			result: {
+				output: `${bashPrompt.reason} Blocked by user.`,
+				exitCode: 1,
+				cancelled: false,
+				truncated: false,
 			},
 		};
 	});

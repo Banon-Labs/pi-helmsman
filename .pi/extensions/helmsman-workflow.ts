@@ -3,6 +3,10 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@m
 import { buildBeadsDraftOutput, parseBeadsDraftArgs } from "./helmsman-workflow/beads.js";
 import { buildClarifiedGoal, getClarificationQuestion, shouldClarifyGoal } from "./helmsman-workflow/clarify.js";
 import { normalizeRequestedPlanGoal, shouldPromptForPlanGoal } from "./helmsman-workflow/command-goal.js";
+import {
+	buildWorkflowHandoffPrompt,
+	buildWorkflowHandoffSessionName,
+} from "./helmsman-workflow/handoff.js";
 import { renderWorkflowPlanDraft } from "./helmsman-workflow/draft.js";
 import {
 	advanceWorkflowPlanForRun,
@@ -40,6 +44,7 @@ const BEADS_DRAFT_COMMAND = "beads-draft";
 const STEP_COMMAND = "step";
 const RUN_COMMAND = "run";
 const APPROVE_COMMAND = "approve";
+const HANDOFF_COMMAND = "handoff";
 const MODE_COMMAND = "mode";
 const STATUS_COMMAND = "status";
 const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "fetch_reference", "questionnaire"];
@@ -386,6 +391,38 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 			updateFooterStatus(ctx, workflowState);
 			ctx.ui.notify(`Plan approval set to ${nextApproval}`, "info");
 			publishStatus(pi, workflowState, Boolean(ctx.model));
+		},
+	});
+
+	pi.registerCommand(HANDOFF_COMMAND, {
+		description: "Create a fresh Pi-native session that carries Helmsman state forward for handoff/resume",
+		handler: async (args, ctx) => {
+			if (!ctx.hasUI) {
+				ctx.ui.notify("/handoff requires interactive mode", "warning");
+				return;
+			}
+
+			const parentSession = ctx.sessionManager.getSessionFile();
+			const promptDraft = buildWorkflowHandoffPrompt(workflowState, args);
+			const sessionName = buildWorkflowHandoffSessionName(workflowState, args);
+			const result = await ctx.newSession({
+				parentSession,
+				setup: async (sessionManager) => {
+					sessionManager.appendCustomEntry(WORKFLOW_STATE_CUSTOM_TYPE, {
+						mode: workflowState.mode,
+						plan: workflowState.plan,
+					});
+					sessionManager.appendSessionInfo(sessionName);
+				},
+			});
+			if (result.cancelled) {
+				ctx.ui.notify("Handoff cancelled", "info");
+				return;
+			}
+
+			ctx.ui.setEditorText(promptDraft);
+			updateFooterStatus(ctx, workflowState);
+			ctx.ui.notify(`Native handoff ready in session \"${sessionName}\". Review the seeded prompt, then submit when ready.`, "info");
 		},
 	});
 

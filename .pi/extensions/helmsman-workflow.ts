@@ -2,6 +2,7 @@ import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { buildClarifiedGoal, getClarificationQuestion, shouldClarifyGoal } from "./helmsman-workflow/clarify.js";
 import { normalizeRequestedPlanGoal, shouldPromptForPlanGoal } from "./helmsman-workflow/command-goal.js";
+import { renderWorkflowPlanDraft } from "./helmsman-workflow/draft.js";
 import { parseWorkflowPlanFromText } from "./helmsman-workflow/parse-plan.js";
 import { describePlannerRuntime } from "./helmsman-workflow/runtime.js";
 import {
@@ -19,6 +20,7 @@ import type { WorkflowMode, WorkflowState } from "./helmsman-workflow/types.js";
 const CUSTOM_MESSAGE_TYPE = "helmsman-workflow";
 const STATUS_KEY = "helmsman-workflow";
 const PLAN_COMMAND = "plan";
+const PLAN_DRAFT_COMMAND = "plan-draft";
 const STEP_COMMAND = "step";
 const RUN_COMMAND = "run";
 const MODE_COMMAND = "mode";
@@ -149,6 +151,19 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 			updateFooterStatus(ctx, workflowState);
 			ctx.ui.notify("Plan mode active. Natural-language requests now steer toward structured planning.", "info");
 			publishStatus(pi, workflowState, Boolean(ctx.model));
+		},
+	});
+
+	pi.registerCommand(PLAN_DRAFT_COMMAND, {
+		description: "Show the providerless structured planner draft using the model-output contract",
+		handler: async (_args, ctx) => {
+			ctx.ui.notify("Showing structured planner draft.", "info");
+			pi.sendMessage({
+				customType: `${CUSTOM_MESSAGE_TYPE}-draft`,
+				content: renderWorkflowPlanDraft(workflowState.plan),
+				details: workflowState.plan,
+				display: true,
+			});
 		},
 	});
 

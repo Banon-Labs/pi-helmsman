@@ -42,10 +42,11 @@ function parsePhases(planSection: string | null): WorkflowPlanPhase[] {
 }
 
 export function parseWorkflowPlanFromText(text: string): WorkflowPlanState | null {
-	const stopLabels = ["Goal", "Constraints", "Assumptions", "Target Files", "Current Phase", "Verification Notes", "Approval State", "Plan"];
+	const stopLabels = ["Goal", "Constraints", "Assumptions", "Target Files", "Current Phase", "Current Step", "Verification Notes", "Approval State", "Plan"];
 	const goalMatch = text.match(/Goal:\s*(.+)/i);
 	const approvalMatch = text.match(/Approval State:\s*(draft|approved)/i);
 	const currentPhaseMatch = text.match(/Current Phase:\s*(\d+)/i);
+	const currentStepMatch = text.match(/Current Step:\s*(\d+)/i);
 	const constraints = parseBulletList(extractSection(text, "Constraints", stopLabels));
 	const assumptions = parseBulletList(extractSection(text, "Assumptions", stopLabels));
 	const targetFiles = parseBulletList(extractSection(text, "Target Files", stopLabels));
@@ -57,7 +58,7 @@ export function parseWorkflowPlanFromText(text: string): WorkflowPlanState | nul
 	return {
 		goal: goalMatch?.[1]?.trim() ?? "",
 		currentPhase: currentPhaseMatch ? Number(currentPhaseMatch[1]) : phases.length > 0 ? 1 : null,
-		currentStep: phases[0]?.steps.length ? 1 : null,
+		currentStep: currentStepMatch ? Number(currentStepMatch[1]) : phases[0]?.steps.length ? 1 : null,
 		targetFiles,
 		approvalState: (approvalMatch?.[1]?.toLowerCase() as WorkflowApprovalState | undefined) ?? "draft",
 		constraints,

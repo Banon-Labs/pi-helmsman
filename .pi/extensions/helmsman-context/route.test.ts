@@ -33,6 +33,7 @@ describe("buildContextRoutePlan", () => {
 		expect(plan.handoffPrompt).toContain("Current repo: /home/choza/projects/pi-helmsman");
 		expect(plan.handoffPrompt).toContain("Target repo: /home/choza/projects/pi-mono");
 		expect(plan.handoffPrompt).toContain("Suggested working folder: /home/choza/projects/pi-mono");
+		expect(plan.handoffPrompt).toContain("Suggested folder source: none");
 	});
 
 	test("uses the suggested folder when route assessment includes one", () => {
@@ -40,6 +41,7 @@ describe("buildContextRoutePlan", () => {
 			assessment: {
 				...mismatchAssessment,
 				suggestedFolder: "/home/choza/projects/pi-mono/packages/coding-agent/docs",
+				suggestedFolderSource: "absolute",
 			},
 			sessionFile: "/home/choza/.pi/agent/sessions/abc.jsonl",
 			lastInputText: "update docs in packages/coding-agent/docs",
@@ -51,6 +53,7 @@ describe("buildContextRoutePlan", () => {
 		expect(plan.handoffPrompt).toContain(
 			"Suggested working folder: /home/choza/projects/pi-mono/packages/coding-agent/docs",
 		);
+		expect(plan.handoffPrompt).toContain("Suggested folder source: absolute");
 	});
 
 	test("returns undefined when no target repo is available", () => {

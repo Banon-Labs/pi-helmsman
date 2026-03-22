@@ -15,6 +15,7 @@ export interface ContextAssessment {
 	currentRepoRoot?: string;
 	selectedRepo?: RepoCandidate;
 	suggestedFolder?: string;
+	suggestedFolderSource?: "absolute" | "relative";
 	blockMutations: boolean;
 	summary: string;
 	candidates: RepoCandidate[];

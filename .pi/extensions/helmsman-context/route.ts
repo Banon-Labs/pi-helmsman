@@ -25,6 +25,7 @@ export function buildContextRoutePlan(input: BuildContextRoutePlanInput): Contex
 		`Current repo: ${input.assessment.currentRepoRoot ?? "unresolved"}`,
 		`Target repo: ${targetRepoRoot}`,
 		`Suggested working folder: ${workingFolder}`,
+		`Suggested folder source: ${input.assessment.suggestedFolderSource ?? "none"}`,
 		`Context state: ${input.assessment.state}`,
 		`Context summary: ${input.assessment.summary}`,
 	].join("\n");

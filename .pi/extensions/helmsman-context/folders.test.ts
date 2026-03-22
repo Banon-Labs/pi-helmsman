@@ -8,7 +8,8 @@ describe("detectSuggestedFolder", () => {
 			inputText: "work in /home/choza/projects/pi-mono/packages/coding-agent/docs next",
 		});
 
-		expect(result).toBe("/home/choza/projects/pi-mono/packages/coding-agent/docs");
+		expect(result?.path).toBe("/home/choza/projects/pi-mono/packages/coding-agent/docs");
+		expect(result?.source).toBe("absolute");
 	});
 
 	test("extracts a repo-relative folder hint from the goal text", () => {
@@ -17,7 +18,8 @@ describe("detectSuggestedFolder", () => {
 			inputText: "focus on packages/coding-agent/src/core for the follow-up",
 		});
 
-		expect(result).toBe("/home/choza/projects/pi-mono/packages/coding-agent/src/core");
+		expect(result?.path).toBe("/home/choza/projects/pi-mono/packages/coding-agent/src/core");
+		expect(result?.source).toBe("relative");
 	});
 
 	test("returns undefined when no folder hint is present", () => {

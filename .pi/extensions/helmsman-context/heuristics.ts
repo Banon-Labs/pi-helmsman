@@ -81,7 +81,7 @@ export function assessContext(input: AssessContextInput): ContextAssessment {
 		state = "mismatch";
 	}
 
-	const suggestedFolder = selectedRepo
+	const suggestedFolderHint = selectedRepo
 		? detectSuggestedFolder({
 			targetRepoRoot: selectedRepo.repoRoot,
 			inputText: input.inputText,
@@ -93,7 +93,8 @@ export function assessContext(input: AssessContextInput): ContextAssessment {
 		workspaceRoot: input.workspaceRoot,
 		currentRepoRoot: input.currentRepoRoot,
 		selectedRepo,
-		suggestedFolder,
+		suggestedFolder: suggestedFolderHint?.path,
+		suggestedFolderSource: suggestedFolderHint?.source,
 		blockMutations: state !== "healthy",
 		summary: summarize(state, selectedRepo, input.currentRepoRoot),
 		candidates: rankedCandidates,

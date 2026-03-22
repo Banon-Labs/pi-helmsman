@@ -113,16 +113,29 @@ describe("workflow state updates", () => {
 			"Inspect .pi/extensions/helmsman-workflow.ts and testing/pi-cli-smoke.sh",
 		).plan;
 		const merged = mergeWorkflowPlanState(existingPlan, {
-			goal: "Inspect .pi/extensions/helmsman-workflow.ts and testing/pi-cli-smoke.sh",
-			currentPhase: 2,
-			currentStep: 1,
-			targetFiles: [],
-			approvalState: "draft",
-			constraints: [],
-			assumptions: [],
-			verificationNotes: ["run bun test"],
-			explorationCommands: [],
-			phases: [{ name: "Implement and verify", steps: ["Update runtime wiring", "Run tests", "Summarize blockers"] }],
+			plan: {
+				goal: "Inspect .pi/extensions/helmsman-workflow.ts and testing/pi-cli-smoke.sh",
+				currentPhase: 2,
+				currentStep: 1,
+				targetFiles: [],
+				approvalState: "draft",
+				constraints: [],
+				assumptions: [],
+				verificationNotes: ["run bun test"],
+				explorationCommands: [],
+				phases: [{ name: "Implement and verify", steps: ["Update runtime wiring", "Run tests", "Summarize blockers"] }],
+			},
+			present: {
+				goal: true,
+				currentPhase: true,
+				currentStep: true,
+				targetFiles: false,
+				approvalState: false,
+				constraints: false,
+				assumptions: false,
+				verificationNotes: true,
+				phases: true,
+			},
 		});
 
 		expect(merged.goal).toBe(existingPlan.goal);
@@ -134,6 +147,37 @@ describe("workflow state updates", () => {
 		expect(merged.verificationNotes).toEqual(["run bun test"]);
 		expect(merged.explorationCommands).toEqual(existingPlan.explorationCommands);
 		expect(merged.phases).toEqual([{ name: "Implement and verify", steps: ["Update runtime wiring", "Run tests", "Summarize blockers"] }]);
+	});
+
+	test("allows explicitly present empty sections to clear prior scaffold detail", () => {
+		const existingPlan = updateWorkflowPlanScaffold(
+			createDefaultWorkflowState(),
+			"Inspect .pi/extensions/helmsman-workflow.ts and testing/pi-cli-smoke.sh",
+		).plan;
+		const merged = mergeWorkflowPlanState(existingPlan, {
+			plan: {
+				...existingPlan,
+				targetFiles: [],
+				constraints: [],
+				explorationCommands: [],
+			},
+			present: {
+				goal: false,
+				currentPhase: false,
+				currentStep: false,
+				targetFiles: true,
+				approvalState: false,
+				constraints: true,
+				assumptions: false,
+				verificationNotes: false,
+				phases: false,
+			},
+		});
+
+		expect(merged.targetFiles).toEqual([]);
+		expect(merged.constraints).toEqual([]);
+		expect(merged.explorationCommands).toEqual([]);
+		expect(merged.assumptions).toEqual(existingPlan.assumptions);
 	});
 });
 

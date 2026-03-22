@@ -28,15 +28,15 @@ describe("renderWorkflowPlanDraft", () => {
 
 		const parsed = parseWorkflowPlanFromText(rendered);
 		expect(parsed).not.toBeNull();
-		expect(parsed?.goal).toBe("Inspect .pi/extensions/helmsman-workflow.ts");
-		expect(parsed?.currentPhase).toBe(2);
-		expect(parsed?.currentStep).toBe(1);
-		expect(parsed?.targetFiles).toEqual([".pi/extensions/helmsman-workflow.ts"]);
-		expect(parsed?.constraints).toEqual(["stay read-only first"]);
-		expect(parsed?.assumptions).toEqual(["user wants a draft plan"]);
-		expect(parsed?.verificationNotes).toEqual(["run bun test"]);
-		expect(parsed?.approvalState).toBe("draft");
-		expect(parsed?.phases).toHaveLength(2);
+		expect(parsed?.plan.goal).toBe("Inspect .pi/extensions/helmsman-workflow.ts");
+		expect(parsed?.plan.currentPhase).toBe(2);
+		expect(parsed?.plan.currentStep).toBe(1);
+		expect(parsed?.plan.targetFiles).toEqual([".pi/extensions/helmsman-workflow.ts"]);
+		expect(parsed?.plan.constraints).toEqual(["stay read-only first"]);
+		expect(parsed?.plan.assumptions).toEqual(["user wants a draft plan"]);
+		expect(parsed?.plan.verificationNotes).toEqual(["run bun test"]);
+		expect(parsed?.plan.approvalState).toBe("draft");
+		expect(parsed?.plan.phases).toHaveLength(2);
 	});
 
 	test("renders placeholder sections for an empty draft", () => {

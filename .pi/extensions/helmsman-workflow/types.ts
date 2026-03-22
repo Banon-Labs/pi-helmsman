@@ -24,6 +24,23 @@ export interface WorkflowState {
 	plan: WorkflowPlanState;
 }
 
+export interface WorkflowPlanPresence {
+	goal: boolean;
+	currentPhase: boolean;
+	currentStep: boolean;
+	targetFiles: boolean;
+	approvalState: boolean;
+	constraints: boolean;
+	assumptions: boolean;
+	verificationNotes: boolean;
+	phases: boolean;
+}
+
+export interface ParsedWorkflowPlanResult {
+	plan: WorkflowPlanState;
+	present: WorkflowPlanPresence;
+}
+
 export interface WorkflowStateEntryData {
 	mode?: WorkflowMode;
 	plan?: Partial<WorkflowPlanState>;

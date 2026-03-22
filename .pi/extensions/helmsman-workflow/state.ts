@@ -1,4 +1,4 @@
-import type { CustomStateEntryLike, WorkflowMode, WorkflowState } from "./types";
+import type { CustomStateEntryLike, ParsedWorkflowPlanResult, WorkflowMode, WorkflowState } from "./types";
 import { buildPlanScaffoldFromGoal } from "./planner";
 
 export const WORKFLOW_STATE_CUSTOM_TYPE = "helmsman-workflow-state";
@@ -68,18 +68,18 @@ export function updateWorkflowPlanScaffold(state: WorkflowState, goal: string): 
 	};
 }
 
-export function mergeWorkflowPlanState(current: WorkflowState["plan"], parsed: WorkflowState["plan"]): WorkflowState["plan"] {
+export function mergeWorkflowPlanState(current: WorkflowState["plan"], parsed: ParsedWorkflowPlanResult): WorkflowState["plan"] {
 	return {
-		goal: parsed.goal || current.goal,
-		currentPhase: parsed.currentPhase ?? current.currentPhase,
-		currentStep: parsed.currentStep ?? current.currentStep,
-		targetFiles: parsed.targetFiles.length > 0 ? parsed.targetFiles : current.targetFiles,
-		approvalState: parsed.approvalState ?? current.approvalState,
-		constraints: parsed.constraints.length > 0 ? parsed.constraints : current.constraints,
-		assumptions: parsed.assumptions.length > 0 ? parsed.assumptions : current.assumptions,
-		verificationNotes: parsed.verificationNotes.length > 0 ? parsed.verificationNotes : current.verificationNotes,
-		explorationCommands: parsed.explorationCommands.length > 0 ? parsed.explorationCommands : current.explorationCommands,
-		phases: parsed.phases.length > 0 ? parsed.phases : current.phases,
+		goal: parsed.present.goal ? parsed.plan.goal : current.goal,
+		currentPhase: parsed.present.currentPhase ? parsed.plan.currentPhase : current.currentPhase,
+		currentStep: parsed.present.currentStep ? parsed.plan.currentStep : current.currentStep,
+		targetFiles: parsed.present.targetFiles ? parsed.plan.targetFiles : current.targetFiles,
+		approvalState: parsed.present.approvalState ? parsed.plan.approvalState : current.approvalState,
+		constraints: parsed.present.constraints ? parsed.plan.constraints : current.constraints,
+		assumptions: parsed.present.assumptions ? parsed.plan.assumptions : current.assumptions,
+		verificationNotes: parsed.present.verificationNotes ? parsed.plan.verificationNotes : current.verificationNotes,
+		explorationCommands: parsed.present.targetFiles ? parsed.plan.explorationCommands : current.explorationCommands,
+		phases: parsed.present.phases ? parsed.plan.phases : current.phases,
 	};
 }
 

@@ -1,12 +1,21 @@
 export type WorkflowMode = "plan" | "build";
 export type WorkflowApprovalState = "draft" | "approved";
 
+export interface WorkflowPlanPhase {
+	name: string;
+	steps: string[];
+}
+
 export interface WorkflowPlanState {
 	goal: string;
 	currentPhase: number | null;
 	currentStep: number | null;
 	targetFiles: string[];
 	approvalState: WorkflowApprovalState;
+	constraints: string[];
+	assumptions: string[];
+	verificationNotes: string[];
+	phases: WorkflowPlanPhase[];
 }
 
 export interface WorkflowState {

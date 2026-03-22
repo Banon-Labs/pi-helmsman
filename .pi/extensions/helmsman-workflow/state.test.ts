@@ -5,6 +5,7 @@ import {
 	restoreWorkflowState,
 	updateWorkflowMode,
 	updateWorkflowPlanGoal,
+	updateWorkflowPlanScaffold,
 } from "./state";
 
 describe("createDefaultWorkflowState", () => {
@@ -19,6 +20,10 @@ describe("createDefaultWorkflowState", () => {
 				currentStep: null,
 				targetFiles: [],
 				approvalState: "draft",
+				constraints: [],
+				assumptions: [],
+				verificationNotes: [],
+				phases: [],
 			},
 		});
 	});
@@ -40,6 +45,10 @@ describe("restoreWorkflowState", () => {
 						currentStep: 2,
 						targetFiles: [".pi/extensions/helmsman-workflow.ts"],
 						approvalState: "approved",
+						constraints: ["stay scoped"],
+						assumptions: ["existing scaffold is valid"],
+						verificationNotes: ["run focused tests"],
+						phases: [{ name: "Inspect", steps: ["Read files", "Summarize approach", "Prepare implementation"] }],
 					},
 				},
 			},
@@ -51,6 +60,7 @@ describe("restoreWorkflowState", () => {
 		expect(state.plan.currentStep).toBe(2);
 		expect(state.plan.targetFiles).toEqual([".pi/extensions/helmsman-workflow.ts"]);
 		expect(state.plan.approvalState).toBe("approved");
+		expect(state.plan.constraints).toEqual(["stay scoped"]);
 	});
 
 	test("falls back to defaults when no custom entry exists", () => {
@@ -76,6 +86,21 @@ describe("workflow state updates", () => {
 		expect(updated.plan.goal).toBe("add /mode and /status commands");
 		expect(updated.plan.approvalState).toBe("draft");
 	});
+
+	test("builds a richer plan scaffold from a goal", () => {
+		const updated = updateWorkflowPlanScaffold(
+			createDefaultWorkflowState(),
+			"Add planner flow in .pi/extensions/helmsman-workflow.ts and validate with testing/pi-cli-smoke.sh",
+		);
+
+		expect(updated.plan.currentPhase).toBe(1);
+		expect(updated.plan.currentStep).toBe(1);
+		expect(updated.plan.targetFiles).toEqual([
+			".pi/extensions/helmsman-workflow.ts",
+			"testing/pi-cli-smoke.sh",
+		]);
+		expect(updated.plan.phases.length).toBeGreaterThan(0);
+	});
 });
 
 describe("formatWorkflowStatus", () => {
@@ -87,10 +112,14 @@ describe("formatWorkflowStatus", () => {
 		expect(output).toContain("Current phase: none");
 		expect(output).toContain("Current step: none");
 		expect(output).toContain("Target files: none");
+		expect(output).toContain("Constraints: none");
+		expect(output).toContain("Assumptions: none");
+		expect(output).toContain("Verification notes: none");
+		expect(output).toContain("Phases: none");
 		expect(output).toContain("Approval: draft");
 	});
 
-	test("renders populated scaffold values", () => {
+		test("renders populated scaffold values", () => {
 		const output = formatWorkflowStatus({
 			mode: "build",
 			plan: {
@@ -99,6 +128,10 @@ describe("formatWorkflowStatus", () => {
 				currentStep: 3,
 				targetFiles: [".pi/extensions/helmsman-workflow.ts", ".pi/extensions/helmsman-workflow/state.ts"],
 				approvalState: "approved",
+				constraints: ["stay scoped"],
+				assumptions: ["status plumbing is already present"],
+				verificationNotes: ["run bun test"],
+				phases: [{ name: "Implement", steps: ["Update code", "Run tests", "Smoke validate"] }],
 			},
 		});
 
@@ -107,6 +140,9 @@ describe("formatWorkflowStatus", () => {
 		expect(output).toContain("Current phase: 1");
 		expect(output).toContain("Current step: 3");
 		expect(output).toContain("- .pi/extensions/helmsman-workflow.ts");
+		expect(output).toContain("- stay scoped");
+		expect(output).toContain("- status plumbing is already present");
+		expect(output).toContain("Phase 1: Implement");
 		expect(output).toContain("Approval: approved");
 	});
 });

@@ -1,10 +1,11 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import {
 	createDefaultWorkflowState,
 	formatWorkflowStatus,
 	restoreWorkflowState,
 	updateWorkflowMode,
 	updateWorkflowPlanGoal,
+	updateWorkflowPlanScaffold,
 	WORKFLOW_STATE_CUSTOM_TYPE,
 } from "./helmsman-workflow/state.js";
 import type { WorkflowMode, WorkflowState } from "./helmsman-workflow/types.js";
@@ -16,8 +17,10 @@ const STEP_COMMAND = "step";
 const RUN_COMMAND = "run";
 const MODE_COMMAND = "mode";
 const STATUS_COMMAND = "status";
+const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "fetch_reference", "questionnaire"];
+const BUILD_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "edit", "write", "fetch_reference"];
 
-function updateFooterStatus(ctx: ExtensionCommandContext | { ui: ExtensionCommandContext["ui"] }, state: WorkflowState): void {
+function updateFooterStatus(ctx: ExtensionCommandContext | ExtensionContext, state: WorkflowState): void {
 	ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg(state.mode === "plan" ? "warning" : "accent", `wf:${state.mode}`));
 }
 
@@ -26,6 +29,10 @@ function persistState(pi: ExtensionAPI, state: WorkflowState): void {
 		mode: state.mode,
 		plan: state.plan,
 	});
+}
+
+function syncActiveTools(pi: ExtensionAPI, mode: WorkflowMode): void {
+	pi.setActiveTools(mode === "plan" ? PLAN_MODE_TOOLS : BUILD_MODE_TOOLS);
 }
 
 function parseModeArg(args: string): WorkflowMode | undefined {
@@ -43,6 +50,10 @@ function publishStatus(pi: ExtensionAPI, state: WorkflowState): void {
 	});
 }
 
+function isSlashCommand(text: string): boolean {
+	return text.trimStart().startsWith("/");
+}
+
 export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 	let workflowState = createDefaultWorkflowState();
 
@@ -50,19 +61,41 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 		workflowState = restoreWorkflowState(
 			ctx.sessionManager.getBranch() as Array<{ type: string; customType?: string; data?: unknown }>,
 		);
-		updateFooterStatus(ctx as ExtensionCommandContext, workflowState);
+		syncActiveTools(pi, workflowState.mode);
+		updateFooterStatus(ctx, workflowState);
+	});
+
+	pi.on("input", async (event, _ctx) => {
+		if (workflowState.mode !== "plan") return { action: "continue" as const };
+		if (!event.text.trim() || isSlashCommand(event.text)) return { action: "continue" as const };
+		workflowState = updateWorkflowPlanScaffold(workflowState, event.text);
+		persistState(pi, workflowState);
+		return { action: "continue" as const };
+	});
+
+	pi.on("before_agent_start", async (event) => {
+		if (workflowState.mode !== "plan") return;
+		if (!event.prompt.trim() || isSlashCommand(event.prompt)) return;
+		return {
+			message: {
+				customType: CUSTOM_MESSAGE_TYPE,
+				content: `[HELMSMAN PLAN MODE]\nTreat the current user request as a planning task, not an execution task. Ask clarifying questions with the questionnaire tool if key requirements are missing. Prefer read-only repo exploration with read, grep, find, ls, bash, and fetch_reference. Produce a concise draft plan with explicit sections for Goal, Constraints, Assumptions, Target Files, Current Phase, Plan, Verification Notes, and Approval State. Keep each phase to 3-5 steps and leave approval state as draft.`,
+				display: false,
+			},
+		};
 	});
 
 	pi.registerCommand(PLAN_COMMAND, {
-		description: "Enter plan mode and capture a placeholder planning goal scaffold",
+		description: "Enter plan mode and seed a draft planning scaffold from the provided goal",
 		handler: async (args, ctx) => {
 			workflowState = updateWorkflowMode(workflowState, "plan");
-			if (args.trim()) {
-				workflowState = updateWorkflowPlanGoal(workflowState, args);
-			}
+			workflowState = args.trim()
+				? updateWorkflowPlanScaffold(workflowState, args)
+				: updateWorkflowPlanGoal(workflowState, workflowState.plan.goal);
 			persistState(pi, workflowState);
+			syncActiveTools(pi, workflowState.mode);
 			updateFooterStatus(ctx, workflowState);
-			ctx.ui.notify("Plan mode active. Planner flow scaffolding is ready; detailed planning behavior lands in later slices.", "info");
+			ctx.ui.notify("Plan mode active. Natural-language requests now steer toward structured planning.", "info");
 			publishStatus(pi, workflowState);
 		},
 	});
@@ -101,6 +134,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 
 			workflowState = updateWorkflowMode(workflowState, nextMode);
 			persistState(pi, workflowState);
+			syncActiveTools(pi, workflowState.mode);
 			updateFooterStatus(ctx, workflowState);
 			ctx.ui.notify(`Workflow mode set to ${nextMode}`, "info");
 			publishStatus(pi, workflowState);

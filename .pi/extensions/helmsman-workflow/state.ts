@@ -15,6 +15,7 @@ export function createDefaultWorkflowState(): WorkflowState {
 			constraints: [],
 			assumptions: [],
 			verificationNotes: [],
+			explorationCommands: [],
 			phases: [],
 		},
 	};
@@ -39,6 +40,7 @@ export function restoreWorkflowState(entries: CustomStateEntryLike[]): WorkflowS
 			constraints: latest.data.plan?.constraints ?? defaults.plan.constraints,
 			assumptions: latest.data.plan?.assumptions ?? defaults.plan.assumptions,
 			verificationNotes: latest.data.plan?.verificationNotes ?? defaults.plan.verificationNotes,
+			explorationCommands: latest.data.plan?.explorationCommands ?? defaults.plan.explorationCommands,
 			phases: latest.data.plan?.phases ?? defaults.plan.phases,
 		},
 	};
@@ -73,6 +75,9 @@ export function formatWorkflowStatus(state: WorkflowState): string {
 	const verificationLines = state.plan.verificationNotes.length > 0
 		? state.plan.verificationNotes.map((item) => `- ${item}`).join("\n")
 		: "none";
+	const explorationLines = state.plan.explorationCommands.length > 0
+		? state.plan.explorationCommands.map((item) => `- ${item}`).join("\n")
+		: "none";
 	const phaseLines = state.plan.phases.length > 0
 		? state.plan.phases
 				.map(
@@ -95,6 +100,8 @@ export function formatWorkflowStatus(state: WorkflowState): string {
 		state.plan.assumptions.length > 0 ? assumptionLines : undefined,
 		`Verification notes: ${state.plan.verificationNotes.length > 0 ? "" : "none"}`,
 		state.plan.verificationNotes.length > 0 ? verificationLines : undefined,
+		`Read-only exploration commands: ${state.plan.explorationCommands.length > 0 ? "" : "none"}`,
+		state.plan.explorationCommands.length > 0 ? explorationLines : undefined,
 		`Phases: ${state.plan.phases.length > 0 ? "" : "none"}`,
 		state.plan.phases.length > 0 ? phaseLines : undefined,
 		`Approval: ${state.plan.approvalState}`,

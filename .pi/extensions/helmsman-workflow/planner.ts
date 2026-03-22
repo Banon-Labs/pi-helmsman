@@ -16,6 +16,19 @@ export function summarizeGoalAsAssumption(goal: string): string {
 	return `The user wants: ${trimmed}`;
 }
 
+export function buildReadOnlyExplorationCommands(targetFiles: string[]): string[] {
+	if (targetFiles.length === 0) {
+		return [
+			"rtk git status --short --branch",
+			"rtk find ./.pi/extensions -maxdepth 2 -type f",
+			"rtk grep \"TODO|plan|workflow\" . -n",
+		];
+	}
+
+	const targeted = targetFiles.slice(0, 2).map((path) => `rtk read ./${path.replace(/^\.\//, "")} --max-lines 200`);
+	return [...targeted, 'rtk grep "helmsman-workflow" . -n'];
+}
+
 function buildDefaultPhases(): WorkflowPlanPhase[] {
 	return [
 		{
@@ -38,15 +51,17 @@ function buildDefaultPhases(): WorkflowPlanPhase[] {
 }
 
 export function buildPlanScaffoldFromGoal(goal: string): WorkflowPlanState {
+	const targetFiles = extractTargetFileHints(goal);
 	return {
 		goal: goal.trim(),
 		currentPhase: 1,
 		currentStep: 1,
-		targetFiles: extractTargetFileHints(goal),
+		targetFiles,
 		approvalState: "draft",
 		constraints: ["Stay conservative: prefer read-only inspection until the plan is validated."],
 		assumptions: [summarizeGoalAsAssumption(goal)],
 		verificationNotes: ["Validate with focused tests first, then use tmux smoke proof for runtime behavior changes."],
+		explorationCommands: buildReadOnlyExplorationCommands(targetFiles),
 		phases: buildDefaultPhases(),
 	};
 }

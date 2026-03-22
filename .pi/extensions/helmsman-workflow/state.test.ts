@@ -23,6 +23,7 @@ describe("createDefaultWorkflowState", () => {
 				constraints: [],
 				assumptions: [],
 				verificationNotes: [],
+				explorationCommands: [],
 				phases: [],
 			},
 		});
@@ -48,6 +49,7 @@ describe("restoreWorkflowState", () => {
 						constraints: ["stay scoped"],
 						assumptions: ["existing scaffold is valid"],
 						verificationNotes: ["run focused tests"],
+						explorationCommands: ["rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200"],
 						phases: [{ name: "Inspect", steps: ["Read files", "Summarize approach", "Prepare implementation"] }],
 					},
 				},
@@ -61,6 +63,7 @@ describe("restoreWorkflowState", () => {
 		expect(state.plan.targetFiles).toEqual([".pi/extensions/helmsman-workflow.ts"]);
 		expect(state.plan.approvalState).toBe("approved");
 		expect(state.plan.constraints).toEqual(["stay scoped"]);
+		expect(state.plan.explorationCommands).toEqual(["rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200"]);
 	});
 
 	test("falls back to defaults when no custom entry exists", () => {
@@ -99,6 +102,7 @@ describe("workflow state updates", () => {
 			".pi/extensions/helmsman-workflow.ts",
 			"testing/pi-cli-smoke.sh",
 		]);
+		expect(updated.plan.explorationCommands).toContain("rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200");
 		expect(updated.plan.phases.length).toBeGreaterThan(0);
 	});
 });
@@ -115,6 +119,7 @@ describe("formatWorkflowStatus", () => {
 		expect(output).toContain("Constraints: none");
 		expect(output).toContain("Assumptions: none");
 		expect(output).toContain("Verification notes: none");
+		expect(output).toContain("Read-only exploration commands: none");
 		expect(output).toContain("Phases: none");
 		expect(output).toContain("Approval: draft");
 	});
@@ -131,6 +136,7 @@ describe("formatWorkflowStatus", () => {
 				constraints: ["stay scoped"],
 				assumptions: ["status plumbing is already present"],
 				verificationNotes: ["run bun test"],
+				explorationCommands: ["rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200"],
 				phases: [{ name: "Implement", steps: ["Update code", "Run tests", "Smoke validate"] }],
 			},
 		});
@@ -142,6 +148,7 @@ describe("formatWorkflowStatus", () => {
 		expect(output).toContain("- .pi/extensions/helmsman-workflow.ts");
 		expect(output).toContain("- stay scoped");
 		expect(output).toContain("- status plumbing is already present");
+		expect(output).toContain("- rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200");
 		expect(output).toContain("Phase 1: Implement");
 		expect(output).toContain("Approval: approved");
 	});

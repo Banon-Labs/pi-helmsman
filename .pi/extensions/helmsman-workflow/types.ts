@@ -15,6 +15,7 @@ export interface WorkflowPlanState {
 	constraints: string[];
 	assumptions: string[];
 	verificationNotes: string[];
+	explorationCommands: string[];
 	phases: WorkflowPlanPhase[];
 }
 

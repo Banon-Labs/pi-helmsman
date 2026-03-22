@@ -1,6 +1,8 @@
+import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { buildClarifiedGoal, getClarificationQuestion, shouldClarifyGoal } from "./helmsman-workflow/clarify.js";
 import { normalizeRequestedPlanGoal, shouldPromptForPlanGoal } from "./helmsman-workflow/command-goal.js";
+import { parseWorkflowPlanFromText } from "./helmsman-workflow/parse-plan.js";
 import {
 	createDefaultWorkflowState,
 	formatWorkflowStatus,
@@ -56,6 +58,17 @@ function isSlashCommand(text: string): boolean {
 	return text.trimStart().startsWith("/");
 }
 
+function isAssistantMessage(message: unknown): message is AssistantMessage {
+	return !!message && typeof message === "object" && (message as { role?: string }).role === "assistant";
+}
+
+function getAssistantText(message: AssistantMessage): string {
+	return message.content
+		.filter((block): block is TextContent => block.type === "text")
+		.map((block) => block.text)
+		.join("\n");
+}
+
 async function resolvePlanGoal(text: string, ctx: ExtensionContext | ExtensionCommandContext): Promise<string> {
 	const trimmed = text.trim();
 	if (!trimmed || !ctx.hasUI || !shouldClarifyGoal(trimmed)) return trimmed;
@@ -96,6 +109,17 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 				display: false,
 			},
 		};
+	});
+
+	pi.on("agent_end", async (event, ctx) => {
+		if (workflowState.mode !== "plan") return;
+		const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
+		if (!lastAssistant) return;
+		const parsedPlan = parseWorkflowPlanFromText(getAssistantText(lastAssistant));
+		if (!parsedPlan) return;
+		workflowState = { ...workflowState, plan: parsedPlan };
+		persistState(pi, workflowState);
+		updateFooterStatus(ctx, workflowState);
 	});
 
 	pi.registerCommand(PLAN_COMMAND, {

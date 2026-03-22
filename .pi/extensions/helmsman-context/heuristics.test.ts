@@ -84,7 +84,7 @@ describe("assessContext", () => {
 		});
 
 		expect(result.state).toBe("uncertain");
-		expect(result.blockMutations).toBe(true);
+		expect(result.blockMutations).toBe(false);
 	});
 
 	test("prefers a candidate with matching repo-relative path evidence over ambient current-repo bias", () => {

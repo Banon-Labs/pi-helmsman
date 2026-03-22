@@ -85,6 +85,15 @@ describe("workflow state updates", () => {
 		expect(updated.plan.approvalState).toBe("draft");
 	});
 
+	test("supports off mode without losing scaffold", () => {
+		const state = updateWorkflowPlanGoal(createDefaultWorkflowState(), "plan the workflow skeleton");
+		const updated = updateWorkflowMode(state, "off");
+
+		expect(updated.mode).toBe("off");
+		expect(updated.plan.goal).toBe("plan the workflow skeleton");
+		expect(updated.plan.approvalState).toBe("draft");
+	});
+
 	test("records plan goal in scaffold", () => {
 		const updated = updateWorkflowPlanGoal(createDefaultWorkflowState(), "add /mode and /status commands");
 
@@ -212,6 +221,15 @@ describe("formatWorkflowStatus", () => {
 		expect(output).toContain("Read-only exploration commands: none");
 		expect(output).toContain("Phases: none");
 		expect(output).toContain("Approval: draft");
+	});
+
+	test("renders off mode explicitly", () => {
+		const output = formatWorkflowStatus({
+			...createDefaultWorkflowState(),
+			mode: "off",
+		});
+
+		expect(output).toContain("Mode: off");
 	});
 
 		test("renders populated scaffold values", () => {

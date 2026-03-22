@@ -57,7 +57,8 @@ const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "fetch_reference"
 const BUILD_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "edit", "write", "fetch_reference", "fetch_web", "search_web"];
 
 function updateFooterStatus(ctx: ExtensionCommandContext | ExtensionContext, state: WorkflowState): void {
-	ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg(state.mode === "plan" ? "warning" : "accent", `wf:${state.mode}`));
+	const tone = state.mode === "plan" ? "warning" : state.mode === "off" ? "success" : "accent";
+	ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg(tone, `wf:${state.mode}`));
 }
 
 function persistState(pi: ExtensionAPI, state: WorkflowState): void {
@@ -68,12 +69,20 @@ function persistState(pi: ExtensionAPI, state: WorkflowState): void {
 }
 
 function syncActiveTools(pi: ExtensionAPI, mode: WorkflowMode): void {
-	pi.setActiveTools(mode === "plan" ? PLAN_MODE_TOOLS : BUILD_MODE_TOOLS);
+	if (mode === "plan") {
+		pi.setActiveTools(PLAN_MODE_TOOLS);
+		return;
+	}
+	if (mode === "build") {
+		pi.setActiveTools(BUILD_MODE_TOOLS);
+		return;
+	}
+	pi.setActiveTools(pi.getAllTools().map((tool) => tool.name));
 }
 
 function parseModeArg(args: string): WorkflowMode | undefined {
 	const value = args.trim().toLowerCase();
-	if (value === "plan" || value === "build") return value;
+	if (value === "plan" || value === "build" || value === "off") return value;
 	return undefined;
 }
 
@@ -175,6 +184,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("tool_call", async (event, ctx) => {
+		if (workflowState.mode === "off") return;
 		if (event.toolName === "bash") {
 			const command = String((event.input as { command?: string }).command ?? "");
 			const planModeBlockReason = workflowState.mode === "plan" ? getPlanModeBashBlockReason(command) : undefined;
@@ -211,6 +221,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("user_bash", async (event, ctx) => {
+		if (workflowState.mode === "off") return;
 		const planModeBlockReason = workflowState.mode === "plan" ? getPlanModeBashBlockReason(event.command) : undefined;
 		if (planModeBlockReason) {
 			speakWorkflowMilestone("safety-block", ttsBackend);
@@ -462,7 +473,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand(MODE_COMMAND, {
-		description: "Show or update Helmsman workflow mode (plan|build)",
+		description: "Show or update Helmsman workflow mode (plan|build|off)",
 		handler: async (args, ctx) => {
 			const trimmed = args.trim();
 			if (!trimmed) {
@@ -473,7 +484,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 
 			const nextMode = parseModeArg(trimmed);
 			if (!nextMode) {
-				ctx.ui.notify("Usage: /mode [plan|build]", "warning");
+				ctx.ui.notify("Usage: /mode [plan|build|off]", "warning");
 				return;
 			}
 

@@ -1,4 +1,4 @@
-export type WorkflowMode = "plan" | "build";
+export type WorkflowMode = "plan" | "build" | "off";
 export type WorkflowApprovalState = "draft" | "approved";
 
 export interface WorkflowPlanPhase {

@@ -33,6 +33,15 @@ describe("helmsman context messaging", () => {
 		expect(message).toContain("/context-switch");
 	});
 
+	test("guard message softens low-confidence warnings when mutations are not blocked", () => {
+		const message = buildContextGuardMessage({
+			...buildAssessment(),
+			blockMutations: false,
+		});
+		expect(message).toContain("low-confidence context warning");
+		expect(message).not.toContain("Hold off on mutations");
+	});
+
 	test("mutation block reason sounds collaborative and gives next actions", () => {
 		expect(buildContextMutationBlockReason("Context uncertain", "context")).toContain("I’m blocking mutation");
 		expect(buildContextMutationBlockReason("Context uncertain", "context")).toContain("read-only mode");

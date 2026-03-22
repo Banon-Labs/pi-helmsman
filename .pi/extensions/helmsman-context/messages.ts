@@ -1,10 +1,13 @@
 import type { ContextAssessment } from "./types.js";
 
 export function buildContextGuardMessage(assessment: ContextAssessment): string {
+	const guidance = assessment.blockMutations
+		? "Hold off on mutations and tracker changes until the repo context is confirmed."
+		: "This looks like a low-confidence context warning. You can keep going, but it may be worth checking /context if Helmsman seems touchy.";
 	return [
 		`[HELMSMAN CONTEXT ${assessment.state.toUpperCase()}]`,
 		assessment.summary,
-		"Hold off on mutations and tracker changes until the repo context is confirmed.",
+		guidance,
 		"You can keep investigating with read-only tools, inspect the routing state with /context, or start an explicit repo switch with /context-switch.",
 	].join("\n");
 }

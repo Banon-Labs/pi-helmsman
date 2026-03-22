@@ -2,6 +2,7 @@ import type { WorkflowPlanState } from "./types";
 
 export interface BeadsDraftOptions {
 	currentIssueId?: string;
+	closeIssue?: boolean;
 }
 
 export interface BeadsCreateDraftAction {
@@ -33,7 +34,19 @@ export interface BeadsCommentDraftAction {
 	evidence: string[];
 }
 
-export type BeadsDraftAction = BeadsCreateDraftAction | BeadsUpdateDraftAction | BeadsCommentDraftAction;
+export interface BeadsCloseDraftAction {
+	type: "close";
+	issueId: string;
+	reason: string;
+	rationale: string;
+	evidence: string[];
+}
+
+export type BeadsDraftAction =
+	| BeadsCreateDraftAction
+	| BeadsUpdateDraftAction
+	| BeadsCommentDraftAction
+	| BeadsCloseDraftAction;
 
 export interface BeadsDraftOutput {
 	adapter: "beads";
@@ -74,7 +87,13 @@ function buildActionDescription(plan: WorkflowPlanState, phaseName?: string, ste
 export function parseBeadsDraftArgs(args: string): BeadsDraftOptions {
 	const trimmed = args.trim();
 	if (!trimmed) return {};
-	return { currentIssueId: trimmed };
+	const parts = trimmed.split(/\s+/);
+	const closeIssue = parts.includes("--close");
+	const currentIssueId = parts.find((part) => part !== "--close");
+	return {
+		currentIssueId,
+		closeIssue: closeIssue || undefined,
+	};
 }
 
 export function buildBeadsDraftOutput(plan: WorkflowPlanState, options: BeadsDraftOptions = {}): BeadsDraftOutput {
@@ -100,6 +119,15 @@ export function buildBeadsDraftOutput(plan: WorkflowPlanState, options: BeadsDra
 					rationale: "Scoped Helmsman plan mapped to a comment draft for the explicitly targeted Beads issue.",
 					evidence: buildEvidence(plan),
 				},
+				...(options.closeIssue
+					? [{
+						type: "close" as const,
+						issueId: options.currentIssueId,
+						reason: "Completed",
+						rationale: "Explicit close intent requested for the targeted Beads issue after scoped Helmsman review.",
+						evidence: buildEvidence(plan),
+					}]
+					: []),
 			]
 		: plan.phases.length > 0
 			? plan.phases.map((phase, index) => ({
@@ -138,6 +166,9 @@ export function buildBeadsDraftOutput(plan: WorkflowPlanState, options: BeadsDra
 			}
 			if (action.type === "update") {
 				return `- Update issue ${action.issueId}: status=${action.status ?? "unchanged"}, priority=${action.priority ?? "unchanged"}`;
+			}
+			if (action.type === "close") {
+				return `- Close issue draft ${action.issueId}: ${action.reason}`;
 			}
 			return `- Add comment draft for ${action.issueId}: ${action.text.split("\n")[0]}`;
 		}),

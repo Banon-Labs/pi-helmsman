@@ -85,11 +85,45 @@ describe("buildBeadsDraftOutput", () => {
 		expect(output.json).toContain('"type": "comment"');
 		expect(output.warnings).not.toContain("Plan has no explicit phases; emitted one scoped Beads create draft from the overall goal.");
 	});
+
+	test("emits a close draft when explicit close intent is provided for the targeted issue", () => {
+		const output = buildBeadsDraftOutput(
+			{
+				goal: "Complete Beads draft output coverage",
+				currentPhase: 2,
+				currentStep: 3,
+				targetFiles: [".pi/extensions/helmsman-workflow/beads.ts"],
+				approvalState: "approved",
+				constraints: ["keep scope tight"],
+				assumptions: [],
+				verificationNotes: ["bun test passed", "tmux smoke passed"],
+				explorationCommands: [],
+				phases: [],
+			},
+			{ currentIssueId: "pi-helmsman-3yh.4", closeIssue: true },
+		);
+
+		expect(output.actions).toHaveLength(3);
+		expect(output.actions[2]).toMatchObject({
+			type: "close",
+			issueId: "pi-helmsman-3yh.4",
+			reason: "Completed",
+		});
+		expect(output.previewText).toContain("Close issue draft pi-helmsman-3yh.4: Completed");
+		expect(output.json).toContain('"type": "close"');
+	});
 });
 
 describe("parseBeadsDraftArgs", () => {
 	test("extracts an explicit issue id when provided", () => {
 		expect(parseBeadsDraftArgs("pi-helmsman-3yh.4")).toEqual({ currentIssueId: "pi-helmsman-3yh.4" });
+	});
+
+	test("extracts explicit close intent when provided", () => {
+		expect(parseBeadsDraftArgs("pi-helmsman-3yh.4 --close")).toEqual({
+			currentIssueId: "pi-helmsman-3yh.4",
+			closeIssue: true,
+		});
 	});
 
 	test("returns empty options when no args are provided", () => {

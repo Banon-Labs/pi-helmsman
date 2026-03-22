@@ -3,6 +3,7 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@m
 import { buildClarifiedGoal, getClarificationQuestion, shouldClarifyGoal } from "./helmsman-workflow/clarify.js";
 import { normalizeRequestedPlanGoal, shouldPromptForPlanGoal } from "./helmsman-workflow/command-goal.js";
 import { parseWorkflowPlanFromText } from "./helmsman-workflow/parse-plan.js";
+import { describePlannerRuntime } from "./helmsman-workflow/runtime.js";
 import {
 	createDefaultWorkflowState,
 	formatWorkflowStatus,
@@ -45,10 +46,10 @@ function parseModeArg(args: string): WorkflowMode | undefined {
 	return undefined;
 }
 
-function publishStatus(pi: ExtensionAPI, state: WorkflowState): void {
+function publishStatus(pi: ExtensionAPI, state: WorkflowState, hasModel: boolean): void {
 	pi.sendMessage({
 		customType: CUSTOM_MESSAGE_TYPE,
-		content: formatWorkflowStatus(state),
+		content: formatWorkflowStatus(state, describePlannerRuntime(hasModel)),
 		details: state,
 		display: true,
 	});
@@ -84,6 +85,11 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 			ctx.sessionManager.getBranch() as Array<{ type: string; customType?: string; data?: unknown }>,
 		);
 		syncActiveTools(pi, workflowState.mode);
+		updateFooterStatus(ctx, workflowState);
+	});
+
+	pi.on("model_select", async (event, ctx) => {
+		ctx.ui.notify(describePlannerRuntime(Boolean(event.model)), event.model ? "info" : "warning");
 		updateFooterStatus(ctx, workflowState);
 	});
 
@@ -138,7 +144,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 			syncActiveTools(pi, workflowState.mode);
 			updateFooterStatus(ctx, workflowState);
 			ctx.ui.notify("Plan mode active. Natural-language requests now steer toward structured planning.", "info");
-			publishStatus(pi, workflowState);
+			publishStatus(pi, workflowState, Boolean(ctx.model));
 		},
 	});
 
@@ -146,7 +152,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 		description: "Placeholder step execution command for the Helmsman workflow scaffold",
 		handler: async (_args, ctx) => {
 			ctx.ui.notify("/step scaffold is registered, but execution behavior is not implemented yet.", "info");
-			publishStatus(pi, workflowState);
+			publishStatus(pi, workflowState, Boolean(ctx.model));
 		},
 	});
 
@@ -154,7 +160,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 		description: "Placeholder phase execution command for the Helmsman workflow scaffold",
 		handler: async (_args, ctx) => {
 			ctx.ui.notify("/run scaffold is registered, but execution behavior is not implemented yet.", "info");
-			publishStatus(pi, workflowState);
+			publishStatus(pi, workflowState, Boolean(ctx.model));
 		},
 	});
 
@@ -164,7 +170,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 			const trimmed = args.trim();
 			if (!trimmed) {
 				ctx.ui.notify(`Current workflow mode: ${workflowState.mode}`, "info");
-				publishStatus(pi, workflowState);
+				publishStatus(pi, workflowState, Boolean(ctx.model));
 				return;
 			}
 
@@ -179,7 +185,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 			syncActiveTools(pi, workflowState.mode);
 			updateFooterStatus(ctx, workflowState);
 			ctx.ui.notify(`Workflow mode set to ${nextMode}`, "info");
-			publishStatus(pi, workflowState);
+			publishStatus(pi, workflowState, Boolean(ctx.model));
 		},
 	});
 
@@ -188,7 +194,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 		handler: async (_args, ctx) => {
 			updateFooterStatus(ctx, workflowState);
 			ctx.ui.notify(`Workflow mode: ${workflowState.mode}`, "info");
-			publishStatus(pi, workflowState);
+			publishStatus(pi, workflowState, Boolean(ctx.model));
 		},
 	});
 }

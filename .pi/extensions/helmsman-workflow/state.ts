@@ -68,7 +68,7 @@ export function updateWorkflowPlanScaffold(state: WorkflowState, goal: string): 
 	};
 }
 
-export function formatWorkflowStatus(state: WorkflowState): string {
+export function formatWorkflowStatus(state: WorkflowState, plannerRuntime?: string): string {
 	const targetLines = state.plan.targetFiles.length > 0 ? state.plan.targetFiles.map((path) => `- ${path}`).join("\n") : "none";
 	const constraintLines = state.plan.constraints.length > 0 ? state.plan.constraints.map((item) => `- ${item}`).join("\n") : "none";
 	const assumptionLines = state.plan.assumptions.length > 0 ? state.plan.assumptions.map((item) => `- ${item}`).join("\n") : "none";
@@ -88,6 +88,7 @@ export function formatWorkflowStatus(state: WorkflowState): string {
 		: "none";
 
 	return [
+		plannerRuntime,
 		`Mode: ${state.mode}`,
 		`Goal: ${state.plan.goal || "none"}`,
 		`Current phase: ${state.plan.currentPhase ?? "none"}`,

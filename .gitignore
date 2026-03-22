@@ -3,8 +3,9 @@
 .dolt/
 *.db
 
-# Local Pi materialized remote reference cache
+# Local Pi materialized remote reference caches
 .pi/remote-refs/
+.pi/web-refs/
 
 # Beads runtime state (per-machine, not canonical project data)
 .beads/push-state.json

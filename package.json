@@ -1,0 +1,22 @@
+{
+  "name": "pi-helmsman",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Helmsman workflow, context, RTK-first, and web-content extensions for pi",
+  "keywords": ["pi-package"],
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-tui": "*",
+    "@sinclair/typebox": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./.pi/extensions/fetch-reference.ts",
+      "./.pi/extensions/helmsman-context.ts",
+      "./.pi/extensions/helmsman-workflow.ts",
+      "./.pi/extensions/rtk-first.ts",
+      "./.pi/extensions/web-content.ts"
+    ]
+  }
+}

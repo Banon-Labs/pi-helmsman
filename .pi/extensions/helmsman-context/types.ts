@@ -13,7 +13,9 @@ export interface ContextAssessment {
 	state: ContextState;
 	workspaceRoot: string;
 	currentRepoRoot?: string;
+	currentRepoCandidate?: RepoCandidate;
 	selectedRepo?: RepoCandidate;
+	decisionExplanation?: string;
 	suggestedFolder?: string;
 	suggestedFolderSource?: "absolute" | "relative";
 	suggestedFolderBasis?: "directory" | "file-parent" | "unverified";

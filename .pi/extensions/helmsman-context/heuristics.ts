@@ -67,10 +67,28 @@ function summarize(state: ContextAssessment["state"], selectedRepo: RepoCandidat
 	return "Context uncertain: repo suitability is unresolved";
 }
 
+function formatCandidateReasons(candidate: RepoCandidate | undefined): string {
+	if (!candidate) return "no distinguishing evidence";
+	return candidate.reasons.join(", ") || "no distinguishing evidence";
+}
+
+function explainDecision(selectedRepo: RepoCandidate | undefined, currentRepoCandidate: RepoCandidate | undefined): string | undefined {
+	if (!selectedRepo || !currentRepoCandidate) return undefined;
+	if (selectedRepo.repoRoot === currentRepoCandidate.repoRoot) return undefined;
+	return [
+		`Selected ${selectedRepo.repoName} over current repo ${currentRepoCandidate.repoName}.`,
+		`Winner: score=${selectedRepo.score}; reasons=${formatCandidateReasons(selectedRepo)}.`,
+		`Current repo: score=${currentRepoCandidate.score}; reasons=${formatCandidateReasons(currentRepoCandidate)}.`,
+	].join(" ");
+}
+
 export function assessContext(input: AssessContextInput): ContextAssessment {
 	const rankedCandidates = rankCandidates(input, input.candidates, input.inputText, input.currentRepoRoot, input.lastGoalText ?? "");
 	const explicitRepo = findExplicitRepoMention(rankedCandidates, input.inputText);
 	const selectedRepo = explicitRepo ?? rankedCandidates[0];
+	const currentRepoCandidate = input.currentRepoRoot
+		? rankedCandidates.find((candidate) => candidate.repoRoot === input.currentRepoRoot)
+		: undefined;
 
 	let state: ContextAssessment["state"] = "healthy";
 	if (!input.currentRepoRoot) {
@@ -92,7 +110,9 @@ export function assessContext(input: AssessContextInput): ContextAssessment {
 		state,
 		workspaceRoot: input.workspaceRoot,
 		currentRepoRoot: input.currentRepoRoot,
+		currentRepoCandidate,
 		selectedRepo,
+		decisionExplanation: explainDecision(selectedRepo, currentRepoCandidate),
 		suggestedFolder: suggestedFolderHint?.path,
 		suggestedFolderSource: suggestedFolderHint?.source,
 		suggestedFolderBasis: suggestedFolderHint?.basis,

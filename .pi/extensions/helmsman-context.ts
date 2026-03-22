@@ -40,6 +40,7 @@ function formatAssessment(assessment: ContextAssessment): string {
 	return [
 		`State: ${assessment.state}`,
 		`Summary: ${assessment.summary}`,
+		`Decision: ${assessment.decisionExplanation ?? "none"}`,
 		`Workspace root: ${assessment.workspaceRoot}`,
 		`Current repo: ${assessment.currentRepoRoot ?? "unresolved"}`,
 		`Selected repo: ${assessment.selectedRepo?.repoRoot ?? "none"}`,

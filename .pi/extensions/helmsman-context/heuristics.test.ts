@@ -102,6 +102,9 @@ describe("assessContext", () => {
 
 		expect(result.selectedRepo?.repoRoot).toBe(targetCandidate.repoRoot);
 		expect(result.selectedRepo?.reasons).toContain("repo-relative directory path exists in candidate");
+		expect(result.decisionExplanation).toContain("Selected pi-mono over current repo pi-helmsman.");
+		expect(result.decisionExplanation).toContain("Winner: score=");
+		expect(result.decisionExplanation).toContain("Current repo: score=");
 		expect(result.state).toBe("mismatch");
 	});
 

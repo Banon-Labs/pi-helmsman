@@ -1,6 +1,10 @@
 import type { WorkflowPlanState } from "./types";
 
-export interface BeadsDraftAction {
+export interface BeadsDraftOptions {
+	currentIssueId?: string;
+}
+
+export interface BeadsCreateDraftAction {
 	type: "create";
 	draftId: string;
 	title: string;
@@ -11,6 +15,25 @@ export interface BeadsDraftAction {
 	rationale: string;
 	evidence: string[];
 }
+
+export interface BeadsUpdateDraftAction {
+	type: "update";
+	issueId: string;
+	status?: string;
+	priority?: number;
+	rationale: string;
+	evidence: string[];
+}
+
+export interface BeadsCommentDraftAction {
+	type: "comment";
+	issueId: string;
+	text: string;
+	rationale: string;
+	evidence: string[];
+}
+
+export type BeadsDraftAction = BeadsCreateDraftAction | BeadsUpdateDraftAction | BeadsCommentDraftAction;
 
 export interface BeadsDraftOutput {
 	adapter: "beads";
@@ -31,6 +54,10 @@ function buildEvidence(plan: WorkflowPlanState, phaseName?: string): string[] {
 	return evidence;
 }
 
+function isScopedIssueUpdateCandidate(plan: WorkflowPlanState, options: BeadsDraftOptions): boolean {
+	return Boolean(options.currentIssueId) && plan.targetFiles.length <= 2;
+}
+
 function buildActionDescription(plan: WorkflowPlanState, phaseName?: string, steps: string[] = []): string {
 	const lines = [
 		`Goal: ${plan.goal || "none"}`,
@@ -44,36 +71,60 @@ function buildActionDescription(plan: WorkflowPlanState, phaseName?: string, ste
 	return lines.filter(Boolean).join("\n");
 }
 
-export function buildBeadsDraftOutput(plan: WorkflowPlanState): BeadsDraftOutput {
+export function parseBeadsDraftArgs(args: string): BeadsDraftOptions {
+	const trimmed = args.trim();
+	if (!trimmed) return {};
+	return { currentIssueId: trimmed };
+}
+
+export function buildBeadsDraftOutput(plan: WorkflowPlanState, options: BeadsDraftOptions = {}): BeadsDraftOutput {
 	const warnings: string[] = [];
 	if (plan.approvalState === "draft") {
 		warnings.push("Plan approval is still draft; review before applying any Beads actions.");
 	}
 
-	const actions: BeadsDraftAction[] = plan.phases.length > 0
-		? plan.phases.map((phase, index) => ({
-				type: "create",
-				draftId: `phase-${index + 1}`,
-				title: `${phase.name} — ${plan.goal || "Helmsman plan slice"}`,
-				issueType: "task",
-				priority: plan.approvalState === "approved" ? 1 : 2,
-				description: buildActionDescription(plan, phase.name, phase.steps),
-				dependsOnDraftIds: index > 0 ? [`phase-${index}`] : undefined,
-				rationale: `Phase-oriented Beads draft derived from Helmsman workflow phase ${index + 1}.`,
-				evidence: buildEvidence(plan, phase.name),
-			}))
-		: [{
-				type: "create",
-				draftId: "goal-1",
-				title: plan.goal || "Helmsman scoped draft",
-				issueType: "task",
-				priority: plan.approvalState === "approved" ? 1 : 2,
-				description: buildActionDescription(plan),
-				rationale: "Single scoped Beads draft derived from overall Helmsman goal because no explicit phases were present.",
-				evidence: buildEvidence(plan),
-			}];
+	const actions: BeadsDraftAction[] = isScopedIssueUpdateCandidate(plan, options)
+		? [
+				{
+					type: "update",
+					issueId: options.currentIssueId,
+					status: "in_progress",
+					priority: plan.approvalState === "approved" ? 1 : 2,
+					rationale: "Scoped Helmsman plan mapped to an update draft for the explicitly targeted Beads issue.",
+					evidence: buildEvidence(plan),
+				},
+				{
+					type: "comment",
+					issueId: options.currentIssueId,
+					text: buildActionDescription(plan),
+					rationale: "Scoped Helmsman plan mapped to a comment draft for the explicitly targeted Beads issue.",
+					evidence: buildEvidence(plan),
+				},
+			]
+		: plan.phases.length > 0
+			? plan.phases.map((phase, index) => ({
+					type: "create",
+					draftId: `phase-${index + 1}`,
+					title: `${phase.name} — ${plan.goal || "Helmsman plan slice"}`,
+					issueType: "task",
+					priority: plan.approvalState === "approved" ? 1 : 2,
+					description: buildActionDescription(plan, phase.name, phase.steps),
+					dependsOnDraftIds: index > 0 ? [`phase-${index}`] : undefined,
+					rationale: `Phase-oriented Beads draft derived from Helmsman workflow phase ${index + 1}.`,
+					evidence: buildEvidence(plan, phase.name),
+				}))
+			: [{
+					type: "create",
+					draftId: "goal-1",
+					title: plan.goal || "Helmsman scoped draft",
+					issueType: "task",
+					priority: plan.approvalState === "approved" ? 1 : 2,
+					description: buildActionDescription(plan),
+					rationale: "Single scoped Beads draft derived from overall Helmsman goal because no explicit phases were present.",
+					evidence: buildEvidence(plan),
+				}];
 
-	if (plan.phases.length === 0) {
+	if (!isScopedIssueUpdateCandidate(plan, options) && !options.currentIssueId && plan.phases.length === 0) {
 		warnings.push("Plan has no explicit phases; emitted one scoped Beads create draft from the overall goal.");
 	}
 
@@ -81,8 +132,14 @@ export function buildBeadsDraftOutput(plan: WorkflowPlanState): BeadsDraftOutput
 		"Helmsman Beads draft preview",
 		...warnings.map((warning) => `Warning: ${warning}`),
 		...actions.map((action) => {
-			const deps = action.dependsOnDraftIds?.length ? ` (depends on: ${action.dependsOnDraftIds.join(", ")})` : "";
-			return `- Create issue draft ${action.draftId}: ${action.title}${deps}`;
+			if (action.type === "create") {
+				const deps = action.dependsOnDraftIds?.length ? ` (depends on: ${action.dependsOnDraftIds.join(", ")})` : "";
+				return `- Create issue draft ${action.draftId}: ${action.title}${deps}`;
+			}
+			if (action.type === "update") {
+				return `- Update issue ${action.issueId}: status=${action.status ?? "unchanged"}, priority=${action.priority ?? "unchanged"}`;
+			}
+			return `- Add comment draft for ${action.issueId}: ${action.text.split("\n")[0]}`;
 		}),
 	];
 

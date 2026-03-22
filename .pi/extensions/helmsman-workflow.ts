@@ -1,6 +1,6 @@
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { buildBeadsDraftOutput } from "./helmsman-workflow/beads.js";
+import { buildBeadsDraftOutput, parseBeadsDraftArgs } from "./helmsman-workflow/beads.js";
 import { buildClarifiedGoal, getClarificationQuestion, shouldClarifyGoal } from "./helmsman-workflow/clarify.js";
 import { normalizeRequestedPlanGoal, shouldPromptForPlanGoal } from "./helmsman-workflow/command-goal.js";
 import { renderWorkflowPlanDraft } from "./helmsman-workflow/draft.js";
@@ -171,8 +171,8 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 
 	pi.registerCommand(BEADS_DRAFT_COMMAND, {
 		description: "Show the Beads-facing draft preview and JSON derived from the current Helmsman plan",
-		handler: async (_args, ctx) => {
-			const draft = buildBeadsDraftOutput(workflowState.plan);
+		handler: async (args, ctx) => {
+			const draft = buildBeadsDraftOutput(workflowState.plan, parseBeadsDraftArgs(args));
 			ctx.ui.notify("Showing Beads draft preview and JSON.", "info");
 			pi.sendMessage({
 				customType: `${CUSTOM_MESSAGE_TYPE}-beads-draft`,

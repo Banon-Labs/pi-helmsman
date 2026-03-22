@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildBeadsDraftOutput } from "./beads";
+import { buildBeadsDraftOutput, parseBeadsDraftArgs } from "./beads";
 import { buildPlanScaffoldFromGoal } from "./planner";
 
 describe("buildBeadsDraftOutput", () => {
@@ -50,5 +50,49 @@ describe("buildBeadsDraftOutput", () => {
 		});
 		expect(output.previewText).toContain("Create issue draft goal-1");
 		expect(output.warnings).toContain("Plan has no explicit phases; emitted one scoped Beads create draft from the overall goal.");
+	});
+
+	test("emits update and comment drafts when an explicit current issue id is provided for a small scoped plan", () => {
+		const output = buildBeadsDraftOutput(
+			{
+				goal: "Tighten Beads draft mapping",
+				currentPhase: 1,
+				currentStep: 2,
+				targetFiles: [".pi/extensions/helmsman-workflow/beads.ts"],
+				approvalState: "approved",
+				constraints: ["stay scoped"],
+				assumptions: ["phase structure is already stable"],
+				verificationNotes: ["run bun test"],
+				explorationCommands: [],
+				phases: [],
+			},
+			{ currentIssueId: "pi-helmsman-3yh.4" },
+		);
+
+		expect(output.actions).toHaveLength(2);
+		expect(output.actions[0]).toMatchObject({
+			type: "update",
+			issueId: "pi-helmsman-3yh.4",
+			status: "in_progress",
+		});
+		expect(output.actions[1]).toMatchObject({
+			type: "comment",
+			issueId: "pi-helmsman-3yh.4",
+		});
+		expect(output.previewText).toContain("Update issue pi-helmsman-3yh.4");
+		expect(output.previewText).toContain("Add comment draft for pi-helmsman-3yh.4");
+		expect(output.json).toContain('"type": "update"');
+		expect(output.json).toContain('"type": "comment"');
+		expect(output.warnings).not.toContain("Plan has no explicit phases; emitted one scoped Beads create draft from the overall goal.");
+	});
+});
+
+describe("parseBeadsDraftArgs", () => {
+	test("extracts an explicit issue id when provided", () => {
+		expect(parseBeadsDraftArgs("pi-helmsman-3yh.4")).toEqual({ currentIssueId: "pi-helmsman-3yh.4" });
+	});
+
+	test("returns empty options when no args are provided", () => {
+		expect(parseBeadsDraftArgs("")).toEqual({});
 	});
 });

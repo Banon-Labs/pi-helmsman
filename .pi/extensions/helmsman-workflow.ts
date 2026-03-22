@@ -4,6 +4,11 @@ import { buildBeadsDraftOutput, parseBeadsDraftArgs } from "./helmsman-workflow/
 import { buildClarifiedGoal, getClarificationQuestion, shouldClarifyGoal } from "./helmsman-workflow/clarify.js";
 import { normalizeRequestedPlanGoal, shouldPromptForPlanGoal } from "./helmsman-workflow/command-goal.js";
 import { renderWorkflowPlanDraft } from "./helmsman-workflow/draft.js";
+import {
+	advanceWorkflowPlanForRun,
+	advanceWorkflowPlanForStep,
+	getExecutionBlockReason,
+} from "./helmsman-workflow/execution.js";
 import { parseWorkflowPlanFromText } from "./helmsman-workflow/parse-plan.js";
 import { describePlannerRuntime } from "./helmsman-workflow/runtime.js";
 import {
@@ -184,17 +189,49 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand(STEP_COMMAND, {
-		description: "Placeholder step execution command for the Helmsman workflow scaffold",
+		description: "Advance one approved Helmsman step at a time",
 		handler: async (_args, ctx) => {
-			ctx.ui.notify("/step scaffold is registered, but execution behavior is not implemented yet.", "info");
+			const blockedReason = getExecutionBlockReason(workflowState.plan, "step");
+			if (blockedReason) {
+				ctx.ui.notify(blockedReason, "warning");
+				publishStatus(pi, workflowState, Boolean(ctx.model));
+				return;
+			}
+
+			const result = advanceWorkflowPlanForStep(workflowState.plan);
+			workflowState = {
+				...workflowState,
+				mode: "build",
+				plan: result.plan,
+			};
+			persistState(pi, workflowState);
+			syncActiveTools(pi, workflowState.mode);
+			updateFooterStatus(ctx, workflowState);
+			ctx.ui.notify(result.summary, "info");
 			publishStatus(pi, workflowState, Boolean(ctx.model));
 		},
 	});
 
 	pi.registerCommand(RUN_COMMAND, {
-		description: "Placeholder phase execution command for the Helmsman workflow scaffold",
+		description: "Advance the current approved Helmsman phase",
 		handler: async (_args, ctx) => {
-			ctx.ui.notify("/run scaffold is registered, but execution behavior is not implemented yet.", "info");
+			const blockedReason = getExecutionBlockReason(workflowState.plan, "run");
+			if (blockedReason) {
+				ctx.ui.notify(blockedReason, "warning");
+				publishStatus(pi, workflowState, Boolean(ctx.model));
+				return;
+			}
+
+			const result = advanceWorkflowPlanForRun(workflowState.plan);
+			workflowState = {
+				...workflowState,
+				mode: "build",
+				plan: result.plan,
+			};
+			persistState(pi, workflowState);
+			syncActiveTools(pi, workflowState.mode);
+			updateFooterStatus(ctx, workflowState);
+			ctx.ui.notify(result.summary, "info");
 			publishStatus(pi, workflowState, Boolean(ctx.model));
 		},
 	});

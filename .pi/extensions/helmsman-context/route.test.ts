@@ -6,14 +6,23 @@ const mismatchAssessment: ContextAssessment = {
 	state: "mismatch",
 	workspaceRoot: "/home/choza/projects",
 	currentRepoRoot: "/home/choza/projects/pi-helmsman",
+	currentRepoCandidate: {
+		repoRoot: "/home/choza/projects/pi-helmsman",
+		repoName: "pi-helmsman",
+		hasBeads: true,
+		isCurrent: true,
+		score: 100,
+		reasons: ["current repo", "has .beads"],
+	},
 	selectedRepo: {
 		repoRoot: "/home/choza/projects/pi-mono",
 		repoName: "pi-mono",
 		hasBeads: false,
 		isCurrent: false,
-		score: 60,
-		reasons: ["repo name mentioned in input"],
+		score: 110,
+		reasons: ["repo-relative file path exists in candidate"],
 	},
+	decisionExplanation: "Selected pi-mono over current repo pi-helmsman. Winner: score=110; reasons=repo-relative file path exists in candidate. Current repo: score=100; reasons=current repo, has .beads.",
 	blockMutations: true,
 	summary: "Context mismatch: requested repo appears to be pi-mono",
 	candidates: [],
@@ -34,6 +43,7 @@ describe("buildContextRoutePlan", () => {
 		expect(plan.handoffPrompt).toContain("Target repo: /home/choza/projects/pi-mono");
 		expect(plan.handoffPrompt).toContain("Suggested working folder: /home/choza/projects/pi-mono");
 		expect(plan.handoffPrompt).toContain("Suggested folder source: none");
+		expect(plan.handoffPrompt).toContain("Decision: Selected pi-mono over current repo pi-helmsman.");
 	});
 
 	test("uses the suggested folder when route assessment includes one", () => {
@@ -56,6 +66,7 @@ describe("buildContextRoutePlan", () => {
 		);
 		expect(plan.handoffPrompt).toContain("Suggested folder source: absolute");
 		expect(plan.handoffPrompt).toContain("Suggested folder basis: file-parent");
+		expect(plan.handoffPrompt).toContain("Decision: Selected pi-mono over current repo pi-helmsman.");
 	});
 
 	test("returns undefined when no target repo is available", () => {

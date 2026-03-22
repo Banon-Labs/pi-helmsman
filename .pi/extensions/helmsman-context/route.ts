@@ -24,6 +24,7 @@ export function buildContextRoutePlan(input: BuildContextRoutePlanInput): Contex
 		`Originating goal: ${input.lastInputText || "continue previous task"}`,
 		`Current repo: ${input.assessment.currentRepoRoot ?? "unresolved"}`,
 		`Target repo: ${targetRepoRoot}`,
+		`Decision: ${input.assessment.decisionExplanation ?? "none"}`,
 		`Suggested working folder: ${workingFolder}`,
 		`Suggested folder source: ${input.assessment.suggestedFolderSource ?? "none"}`,
 		`Suggested folder basis: ${input.assessment.suggestedFolderBasis ?? "none"}`,

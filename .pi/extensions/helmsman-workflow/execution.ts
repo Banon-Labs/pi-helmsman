@@ -32,7 +32,7 @@ export function isVerificationCommand(command: string): boolean {
 
 export function getVerificationFailureReason(command: string): string | undefined {
 	if (!isVerificationCommand(command)) return undefined;
-	return `Verification command failed: ${command.trim()}. Returning to plan mode so Helmsman can re-evaluate before continuing.`;
+	return `Verification command failed: ${command.trim()}.`;
 }
 
 export function buildVerificationFailureNote(command: string): string {

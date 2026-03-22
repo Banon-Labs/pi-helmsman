@@ -3,11 +3,15 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@m
 import { buildBeadsDraftOutput, parseBeadsDraftArgs } from "./helmsman-workflow/beads.js";
 import { buildClarifiedGoal, getClarificationQuestion, shouldClarifyGoal } from "./helmsman-workflow/clarify.js";
 import { normalizeRequestedPlanGoal, shouldPromptForPlanGoal } from "./helmsman-workflow/command-goal.js";
-import {
-	buildWorkflowHandoffPrompt,
-	buildWorkflowHandoffSessionName,
-} from "./helmsman-workflow/handoff.js";
+import { buildWorkflowHandoffPrompt, buildWorkflowHandoffSessionName } from "./helmsman-workflow/handoff.js";
 import { renderWorkflowPlanDraft } from "./helmsman-workflow/draft.js";
+import {
+	buildApprovalRequiredNotice,
+	buildCollaborativeReplanNotice,
+	buildPlanModeActivationNotice,
+	buildPlanModeSystemPrompt,
+	buildVerificationFailureNotice,
+} from "./helmsman-workflow/voice.js";
 import {
 	advanceWorkflowPlanForRun,
 	advanceWorkflowPlanForStep,
@@ -164,7 +168,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 		return {
 			message: {
 				customType: CUSTOM_MESSAGE_TYPE,
-				content: `[HELMSMAN PLAN MODE]\nTreat the current user request as a planning task, not an execution task. Ask clarifying questions with the questionnaire tool if key requirements are missing. Prefer read-only repo exploration with read, grep, find, ls, bash, and fetch_reference. Produce a concise draft plan with explicit sections for Goal, Constraints, Assumptions, Target Files, Current Phase, Plan, Verification Notes, and Approval State. Keep each phase to 3-5 steps and leave approval state as draft.`,
+				content: buildPlanModeSystemPrompt(),
 				display: false,
 			},
 		};
@@ -267,7 +271,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 		persistState(pi, workflowState);
 		syncActiveTools(pi, workflowState.mode);
 		updateFooterStatus(ctx, workflowState);
-		ctx.ui.notify(verificationFailureReason, "warning");
+		ctx.ui.notify(buildVerificationFailureNotice(verificationFailureReason), "warning");
 		speakWorkflowMilestone("safety-block", ttsBackend);
 		publishStatus(pi, workflowState, Boolean(ctx.model));
 	});
@@ -302,7 +306,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 			persistState(pi, workflowState);
 			syncActiveTools(pi, workflowState.mode);
 			updateFooterStatus(ctx, workflowState);
-			ctx.ui.notify("Plan mode active. Natural-language requests now steer toward structured planning.", "info");
+			ctx.ui.notify(buildPlanModeActivationNotice(), "info");
 			speakWorkflowMilestone("plan-ready", ttsBackend);
 			publishStatus(pi, workflowState, Boolean(ctx.model));
 		},
@@ -345,12 +349,12 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 					persistState(pi, workflowState);
 					syncActiveTools(pi, workflowState.mode);
 					updateFooterStatus(ctx, workflowState);
-					ctx.ui.notify(`${blockedReason} Returning to plan mode for replanning.`, "warning");
+					ctx.ui.notify(buildCollaborativeReplanNotice(blockedReason), "warning");
 					speakWorkflowMilestone("safety-block", ttsBackend);
 					publishStatus(pi, workflowState, Boolean(ctx.model));
 					return;
 				}
-				ctx.ui.notify(blockedReason, "warning");
+				ctx.ui.notify(buildApprovalRequiredNotice(blockedReason), "warning");
 				if (blockedReason.includes("approved plan")) speakWorkflowMilestone("approval-required", ttsBackend);
 				publishStatus(pi, workflowState, Boolean(ctx.model));
 				return;
@@ -381,12 +385,12 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 					persistState(pi, workflowState);
 					syncActiveTools(pi, workflowState.mode);
 					updateFooterStatus(ctx, workflowState);
-					ctx.ui.notify(`${blockedReason} Returning to plan mode for replanning.`, "warning");
+					ctx.ui.notify(buildCollaborativeReplanNotice(blockedReason), "warning");
 					speakWorkflowMilestone("safety-block", ttsBackend);
 					publishStatus(pi, workflowState, Boolean(ctx.model));
 					return;
 				}
-				ctx.ui.notify(blockedReason, "warning");
+				ctx.ui.notify(buildApprovalRequiredNotice(blockedReason), "warning");
 				if (blockedReason.includes("approved plan")) speakWorkflowMilestone("approval-required", ttsBackend);
 				publishStatus(pi, workflowState, Boolean(ctx.model));
 				return;

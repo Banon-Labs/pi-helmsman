@@ -128,10 +128,10 @@ export function getBashSafetyPrompt(command: string, options?: WorkflowBashSafet
 
 export function getPlanModeBashBlockReason(command: string): string | undefined {
 	if (isReadOnlyBashCommand(command)) return undefined;
-	return "Plan mode only allows read-only bash exploration. Switch to /mode build and use an approved plan before running mutating shell commands.";
+	return "Plan mode stays read-only so we can keep assumptions and scope visible. Switch to /mode build and use an approved plan before running mutating shell commands.";
 }
 
 export function getUnexpectedFileSpreadReason(path: string, targetFiles: string[]): string | undefined {
 	if (isPathCoveredByTargets(path, targetFiles)) return undefined;
-	return `Planned target files were ${targetFiles.join(", ")}, but execution attempted to touch ${path}. Returning to plan mode for replanning instead of guessing beyond the approved scope.`;
+	return `Planned target files were ${targetFiles.join(", ")}, but execution attempted to touch ${path}. I’m returning to plan mode so we can confirm whether that broader scope is intentional.`;
 }

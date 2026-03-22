@@ -12,6 +12,13 @@ import {
 	formatSelectableCandidateLabel,
 	shouldPromptForRepoSelection,
 } from "./helmsman-context/selection.js";
+import {
+	buildContextDirectBashBlockOutput,
+	buildContextGuardMessage,
+	buildContextMutationBlockReason,
+	buildContextRouteNotice,
+	buildContextSwitchUnavailableNotice,
+} from "./helmsman-context/messages.js";
 import { restoreTrackedGoal } from "./helmsman-context/state.js";
 import type { ContextAssessment } from "./helmsman-context/types.js";
 
@@ -144,7 +151,7 @@ export default function helmsmanContextExtension(pi: ExtensionAPI) {
 		return {
 			message: {
 				customType: CUSTOM_TYPE,
-				content: `[HELMSMAN CONTEXT ${assessment.state.toUpperCase()}]\n${assessment.summary}\nDo not mutate files or issue trackers until repo context is resolved. You may continue with read-only investigation only and should recommend /context for inspection or an explicit repo switch request.`,
+				content: buildContextGuardMessage(assessment),
 				display: false,
 			},
 		};
@@ -156,7 +163,7 @@ export default function helmsmanContextExtension(pi: ExtensionAPI) {
 		if (!isMutatingToolCall(event)) return;
 		return {
 			block: true,
-			reason: `${assessment.summary}. Mutating tools are blocked until context is resolved. Use /${COMMAND_NAME} to inspect candidates and stay in read-only investigation mode.`,
+			reason: buildContextMutationBlockReason(assessment.summary, COMMAND_NAME),
 		};
 	});
 
@@ -166,7 +173,7 @@ export default function helmsmanContextExtension(pi: ExtensionAPI) {
 		if (isReadOnlyBashCommand(event.command)) return;
 		return {
 			result: {
-				output: `${assessment.summary}. Direct bash mutation blocked until context is resolved. Use /${COMMAND_NAME} and restrict investigation to read-only commands.`,
+				output: buildContextDirectBashBlockOutput(assessment.summary, COMMAND_NAME),
 				exitCode: 1,
 				cancelled: false,
 				truncated: false,
@@ -239,12 +246,12 @@ export default function helmsmanContextExtension(pi: ExtensionAPI) {
 				lastInputText: routeGoal,
 			});
 			if (!routePlan) {
-				ctx.ui.notify("No target repo available for context correction", "warning");
+				ctx.ui.notify(buildContextSwitchUnavailableNotice(), "warning");
 				return;
 			}
 
 			const content = formatRoutePlan(routePlan.command, routePlan.handoffPrompt);
-			ctx.ui.notify(`Route to ${routePlan.targetRepoRoot}`, "info");
+			ctx.ui.notify(buildContextRouteNotice(routePlan.targetRepoRoot), "info");
 			pi.sendMessage({
 				customType: CUSTOM_TYPE,
 				content,

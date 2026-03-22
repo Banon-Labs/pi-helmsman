@@ -95,7 +95,7 @@ describe("getPlanModeBashBlockReason", () => {
 	});
 
 	test("blocks mutating shell commands in plan mode", () => {
-		expect(getPlanModeBashBlockReason("rm -rf tmp-output")).toContain("Plan mode only allows read-only bash exploration");
+		expect(getPlanModeBashBlockReason("rm -rf tmp-output")).toContain("Plan mode stays read-only");
 		expect(getPlanModeBashBlockReason("git reset --hard HEAD~1")).toContain("approved plan");
 	});
 });
@@ -111,7 +111,7 @@ describe("unexpected file spread detection", () => {
 
 	test("flags edits outside the approved target file set", () => {
 		expect(getUnexpectedFileSpreadReason("testing/pi-cli-smoke.sh", [".pi/extensions/helmsman-workflow.ts"]))
-			.toContain("Returning to plan mode for replanning");
+			.toContain("I’m returning to plan mode");
 	});
 
 	test("does not flag in-scope paths or empty target lists", () => {

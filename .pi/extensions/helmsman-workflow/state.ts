@@ -3,6 +3,7 @@ import type {
 	ParsedWorkflowPlanResult,
 	WorkflowApprovalState,
 	WorkflowMode,
+	WorkflowSelfReview,
 	WorkflowState,
 } from "./types";
 import { buildPlanScaffoldFromGoal, buildReadOnlyExplorationCommands } from "./planner";
@@ -112,6 +113,41 @@ export function mergeWorkflowPlanState(current: WorkflowState["plan"], parsed: P
 		explorationCommands: parsed.present.targetFiles ? parsed.plan.explorationCommands : current.explorationCommands,
 		phases: parsed.present.phases ? parsed.plan.phases : current.phases,
 	});
+}
+
+export function shouldRunPreHandoffReview(text: string): boolean {
+	const trimmed = text.trim();
+	if (!trimmed) return false;
+	if (/\bTrigger:\s*.+\bConfidence:\s*(?:low|medium|high)\b[\s\S]*\bDecision:\s*(?:continue|handoff)\b/i.test(trimmed)) {
+		return false;
+	}
+	return /\b(done|completed|finished|human gate|next task|next work|only open issue|hand(?:ing)? back|wrap(?:ped)? up|all set)\b/i.test(trimmed);
+}
+
+export function parsePreHandoffReview(text: string): WorkflowSelfReview | null {
+	const trigger = text.match(/^Trigger:\s*(.+)$/im)?.[1]?.trim();
+	const confidence = text.match(/^Confidence:\s*(low|medium|high)$/im)?.[1]?.toLowerCase() as WorkflowSelfReview["confidence"] | undefined;
+	const risk = text.match(/^Risk:\s*(low|medium|high)$/im)?.[1]?.toLowerCase() as WorkflowSelfReview["risk"] | undefined;
+	const validation = text.match(/^Validation:\s*(sufficient|insufficient)$/im)?.[1]?.toLowerCase() as WorkflowSelfReview["validation"] | undefined;
+	const decision = text.match(/^Decision:\s*(continue|handoff)$/im)?.[1]?.toLowerCase() as WorkflowSelfReview["decision"] | undefined;
+	const reasoning = text.match(/^Reasoning:\s*([\s\S]*?)(?:\nFollow-up:|$)/im)?.[1]?.replace(/\s+/g, " ")?.trim();
+	const followUpSection = text.match(/^Follow-up:\s*([\s\S]*)$/im)?.[1] ?? "";
+	const followUp = followUpSection
+		.split("\n")
+		.map((line) => line.trim())
+		.filter((line) => line.startsWith("- "))
+		.map((line) => line.slice(2).trim())
+		.filter(Boolean);
+	if (!trigger || !confidence || !risk || !validation || !decision || !reasoning) return null;
+	return {
+		trigger,
+		confidence,
+		risk,
+		validation,
+		decision,
+		reasoning,
+		followUp,
+	};
 }
 
 export function formatWorkflowStatus(state: WorkflowState, plannerRuntime?: string): string {

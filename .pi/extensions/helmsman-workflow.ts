@@ -32,8 +32,10 @@ import {
 	createDefaultWorkflowState,
 	formatWorkflowStatus,
 	mergeWorkflowPlanState,
+	parsePreHandoffReview,
 	restoreWorkflowState,
 	sanitizeWorkflowPlanState,
+	shouldRunPreHandoffReview,
 	updateWorkflowApprovalState,
 	updateWorkflowMode,
 	updateWorkflowPlanGoal,
@@ -41,7 +43,12 @@ import {
 	WORKFLOW_STATE_CUSTOM_TYPE,
 } from "./helmsman-workflow/state.js";
 import { detectWorkflowTtsBackend, speakWorkflowMilestone, type WorkflowTtsBackend } from "./helmsman-workflow/tts.js";
-import type { WorkflowApprovalState, WorkflowMode, WorkflowState } from "./helmsman-workflow/types.js";
+import type {
+	WorkflowApprovalState,
+	WorkflowMode,
+	WorkflowSelfReview,
+	WorkflowState,
+} from "./helmsman-workflow/types.js";
 
 const CUSTOM_MESSAGE_TYPE = "helmsman-workflow";
 const STATUS_KEY = "helmsman-workflow";
@@ -149,6 +156,37 @@ const PLAN_COMMAND_SYSTEM_PROMPT = [
 	"Return only the structured draft plan with the required sections.",
 ].join("\n");
 
+const REVIEW_COMMAND_SYSTEM_PROMPT = [
+	"[HELMSMAN SELF-REVIEW]",
+	"You are evaluating whether Helmsman should hand work back to the user or keep working on the current task.",
+	"Be skeptical of premature completion claims.",
+	"Weigh confidence, residual risk, validation completeness, and brittle/failure-path gaps.",
+	"If the work looks under-validated or likely incomplete, choose continue.",
+	"Return only the following sections:",
+	"Trigger: <short description>",
+	"Confidence: low|medium|high",
+	"Risk: low|medium|high",
+	"Validation: sufficient|insufficient",
+	"Decision: continue|handoff",
+	"Reasoning: <short paragraph>",
+	"Follow-up:",
+	"- <item or none>",
+].join("\n");
+
+function formatPreHandoffReview(review: WorkflowSelfReview): string {
+	return [
+		"Helmsman self-review:",
+		`- Trigger: ${review.trigger}`,
+		`- Confidence: ${review.confidence}`,
+		`- Risk: ${review.risk}`,
+		`- Validation: ${review.validation}`,
+		`- Decision: ${review.decision}`,
+		`- Reasoning: ${review.reasoning}`,
+		"- Follow-up:",
+		...(review.followUp.length > 0 ? review.followUp.map((item) => `  - ${item}`) : ["  - none"]),
+	].join("\n");
+}
+
 async function generatePlanDraft(
 	ctx: ExtensionCommandContext,
 	goal: string,
@@ -179,6 +217,55 @@ async function generatePlanDraft(
 			const response = await complete(
 				ctx.model!,
 				{ systemPrompt: PLAN_COMMAND_SYSTEM_PROMPT, messages: [userMessage] },
+				{ apiKey, signal: loader.signal },
+			);
+			if (response.stopReason === "aborted") return null;
+			return response.content
+				.filter((block): block is { type: "text"; text: string } => block.type === "text")
+				.map((block) => block.text)
+				.join("\n")
+				.trim();
+		};
+
+		doGenerate().then(done).catch(() => done(null));
+		return loader;
+	});
+}
+
+async function generatePreHandoffReview(
+	ctx: ExtensionContext,
+	assistantText: string,
+	workflowState: WorkflowState,
+): Promise<string | null> {
+	if (!ctx.hasUI || !ctx.model) return null;
+	return ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
+		const loader = new BorderedLoader(tui, theme, `Running Helmsman self-review with ${ctx.model!.id}...`);
+		loader.onAbort = () => done(null);
+
+		const doGenerate = async () => {
+			const apiKey = await ctx.modelRegistry.getApiKey(ctx.model!);
+			const userMessage: UserMessage = {
+				role: "user",
+				content: [{
+					type: "text",
+					text: [
+						`Workflow goal: ${workflowState.plan.goal || "none"}`,
+						`Workflow mode: ${workflowState.mode}`,
+						`Approval: ${workflowState.plan.approvalState}`,
+						`Current position: phase ${workflowState.plan.currentPhase ?? "none"}, step ${workflowState.plan.currentStep ?? "none"}`,
+						"",
+						"Verification notes:",
+						workflowState.plan.verificationNotes.length > 0 ? workflowState.plan.verificationNotes.map((note) => `- ${note}`).join("\n") : "- none",
+						"",
+						"Assistant response to review:",
+						assistantText,
+					].join("\n"),
+				}],
+				timestamp: Date.now(),
+			};
+			const response = await complete(
+				ctx.model!,
+				{ systemPrompt: REVIEW_COMMAND_SYSTEM_PROMPT, messages: [userMessage] },
 				{ apiKey, signal: loader.signal },
 			);
 			if (response.stopReason === "aborted") return null;
@@ -341,18 +428,64 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("agent_end", async (event, ctx) => {
-		if (workflowState.mode !== "plan") return;
 		const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
 		if (!lastAssistant) return;
-		const parsedPlan = parseWorkflowPlanFromText(getAssistantText(lastAssistant));
-		if (!parsedPlan) return;
-		workflowState = {
-			...workflowState,
-			plan: mergeWorkflowPlanState(workflowState.plan, parsedPlan),
-		};
-		persistState(pi, workflowState);
-		updateFooterStatus(ctx, workflowState);
-		speakWorkflowMilestone("plan-ready", ttsBackend);
+		const assistantText = getAssistantText(lastAssistant);
+
+		if (workflowState.mode === "plan") {
+			const parsedPlan = parseWorkflowPlanFromText(assistantText);
+			if (!parsedPlan) return;
+			workflowState = {
+				...workflowState,
+				plan: mergeWorkflowPlanState(workflowState.plan, parsedPlan),
+			};
+			persistState(pi, workflowState);
+			updateFooterStatus(ctx, workflowState);
+			speakWorkflowMilestone("plan-ready", ttsBackend);
+			return;
+		}
+
+		if (workflowState.mode !== "build" || !shouldRunPreHandoffReview(assistantText)) return;
+		const reviewText = await generatePreHandoffReview(ctx, assistantText, workflowState);
+		if (!reviewText) return;
+		const parsedReview = parsePreHandoffReview(reviewText);
+		if (!parsedReview) {
+			pi.sendMessage({
+				customType: `${CUSTOM_MESSAGE_TYPE}-review-error`,
+				content: reviewText,
+				details: { goal: workflowState.plan.goal },
+				display: true,
+			});
+			ctx.ui.notify("Helmsman self-review ran, but the review output was not structured enough to act on.", "warning");
+			return;
+		}
+
+		if (parsedReview.decision === "continue") {
+			workflowState = {
+				...updateWorkflowApprovalState(updateWorkflowMode(workflowState, "plan"), "draft"),
+				plan: {
+					...workflowState.plan,
+					approvalState: "draft",
+					verificationNotes: [
+						...workflowState.plan.verificationNotes,
+						`Self-review kept work active: ${parsedReview.reasoning}`,
+					],
+				},
+			};
+			persistState(pi, workflowState);
+			syncActiveTools(pi, workflowState.mode);
+			updateFooterStatus(ctx, workflowState);
+			ctx.ui.notify("Helmsman self-review found more work to do, so I returned to plan mode instead of handing off.", "warning");
+			speakWorkflowMilestone("safety-block", ttsBackend);
+			publishStatus(pi, workflowState, Boolean(ctx.model));
+		}
+
+		pi.sendMessage({
+			customType: `${CUSTOM_MESSAGE_TYPE}-review`,
+			content: formatPreHandoffReview(parsedReview),
+			details: parsedReview,
+			display: true,
+		});
 	});
 
 	pi.registerCommand(PLAN_COMMAND, {

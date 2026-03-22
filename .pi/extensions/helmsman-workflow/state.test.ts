@@ -3,8 +3,10 @@ import {
 	createDefaultWorkflowState,
 	formatWorkflowStatus,
 	mergeWorkflowPlanState,
+	parsePreHandoffReview,
 	restoreWorkflowState,
 	sanitizeWorkflowPlanState,
+	shouldRunPreHandoffReview,
 	updateWorkflowApprovalState,
 	updateWorkflowMode,
 	updateWorkflowPlanGoal,
@@ -236,6 +238,27 @@ describe("workflow state updates", () => {
 		expect(sanitized.targetFiles).toEqual([".pi/extensions/helmsman-workflow.ts"]);
 		expect(sanitized.explorationCommands).toContain("rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200");
 		expect(sanitized.explorationCommands.some((command) => command.includes("/disabled"))).toBe(false);
+	});
+});
+
+describe("pre-handoff review helpers", () => {
+	test("detects completion-like responses that should trigger self-review", () => {
+		expect(shouldRunPreHandoffReview("The work is done and the next task is pi-helmsman-dib.")).toBe(true);
+		expect(shouldRunPreHandoffReview("Still investigating the failure path.")).toBe(false);
+	});
+
+	test("parses structured self-review output", () => {
+		const parsed = parsePreHandoffReview(`Trigger: completion claim with next-task pivot\nConfidence: low\nRisk: medium\nValidation: insufficient\nDecision: continue\nReasoning: The implementation lacks fallback testing and still shows open risks.\nFollow-up:\n- Add failure-path coverage\n- Re-run smoke validation`);
+
+		expect(parsed).toEqual({
+			trigger: "completion claim with next-task pivot",
+			confidence: "low",
+			risk: "medium",
+			validation: "insufficient",
+			decision: "continue",
+			reasoning: "The implementation lacks fallback testing and still shows open risks.",
+			followUp: ["Add failure-path coverage", "Re-run smoke validation"],
+		});
 	});
 });
 

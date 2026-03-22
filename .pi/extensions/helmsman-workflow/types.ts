@@ -24,6 +24,20 @@ export interface WorkflowState {
 	plan: WorkflowPlanState;
 }
 
+export type WorkflowReviewDecision = "continue" | "handoff";
+export type WorkflowReviewLevel = "low" | "medium" | "high";
+export type WorkflowValidationState = "sufficient" | "insufficient";
+
+export interface WorkflowSelfReview {
+	trigger: string;
+	confidence: WorkflowReviewLevel;
+	risk: WorkflowReviewLevel;
+	validation: WorkflowValidationState;
+	decision: WorkflowReviewDecision;
+	reasoning: string;
+	followUp: string[];
+}
+
 export interface WorkflowPlanPresence {
 	goal: boolean;
 	currentPhase: boolean;

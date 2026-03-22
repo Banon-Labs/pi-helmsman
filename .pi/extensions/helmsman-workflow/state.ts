@@ -1,4 +1,10 @@
-import type { CustomStateEntryLike, ParsedWorkflowPlanResult, WorkflowMode, WorkflowState } from "./types";
+import type {
+	CustomStateEntryLike,
+	ParsedWorkflowPlanResult,
+	WorkflowApprovalState,
+	WorkflowMode,
+	WorkflowState,
+} from "./types";
 import { buildPlanScaffoldFromGoal } from "./planner";
 
 export const WORKFLOW_STATE_CUSTOM_TYPE = "helmsman-workflow-state";
@@ -48,6 +54,16 @@ export function restoreWorkflowState(entries: CustomStateEntryLike[]): WorkflowS
 
 export function updateWorkflowMode(state: WorkflowState, mode: WorkflowMode): WorkflowState {
 	return { ...state, mode };
+}
+
+export function updateWorkflowApprovalState(state: WorkflowState, approvalState: WorkflowApprovalState): WorkflowState {
+	return {
+		...state,
+		plan: {
+			...state.plan,
+			approvalState,
+		},
+	};
 }
 
 export function updateWorkflowPlanGoal(state: WorkflowState, goal: string): WorkflowState {

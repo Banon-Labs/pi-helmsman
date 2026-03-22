@@ -4,6 +4,7 @@ import {
 	formatWorkflowStatus,
 	mergeWorkflowPlanState,
 	restoreWorkflowState,
+	updateWorkflowApprovalState,
 	updateWorkflowMode,
 	updateWorkflowPlanGoal,
 	updateWorkflowPlanScaffold,
@@ -105,6 +106,21 @@ describe("workflow state updates", () => {
 		]);
 		expect(updated.plan.explorationCommands).toContain("rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200");
 		expect(updated.plan.phases.length).toBeGreaterThan(0);
+	});
+
+	test("updates approval state without losing the existing scaffold", () => {
+		const planned = updateWorkflowPlanScaffold(
+			createDefaultWorkflowState(),
+			"Add planner flow in .pi/extensions/helmsman-workflow.ts and validate with testing/pi-cli-smoke.sh",
+		);
+		const approved = updateWorkflowApprovalState(planned, "approved");
+		const draftAgain = updateWorkflowApprovalState(approved, "draft");
+
+		expect(approved.plan.approvalState).toBe("approved");
+		expect(approved.plan.goal).toBe(planned.plan.goal);
+		expect(approved.plan.targetFiles).toEqual(planned.plan.targetFiles);
+		expect(draftAgain.plan.approvalState).toBe("draft");
+		expect(draftAgain.plan.phases).toEqual(planned.plan.phases);
 	});
 
 	test("merges parsed plan output without dropping prior scaffold detail when sections are omitted", () => {

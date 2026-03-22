@@ -16,12 +16,13 @@ import {
 	formatWorkflowStatus,
 	mergeWorkflowPlanState,
 	restoreWorkflowState,
+	updateWorkflowApprovalState,
 	updateWorkflowMode,
 	updateWorkflowPlanGoal,
 	updateWorkflowPlanScaffold,
 	WORKFLOW_STATE_CUSTOM_TYPE,
 } from "./helmsman-workflow/state.js";
-import type { WorkflowMode, WorkflowState } from "./helmsman-workflow/types.js";
+import type { WorkflowApprovalState, WorkflowMode, WorkflowState } from "./helmsman-workflow/types.js";
 
 const CUSTOM_MESSAGE_TYPE = "helmsman-workflow";
 const STATUS_KEY = "helmsman-workflow";
@@ -30,6 +31,7 @@ const PLAN_DRAFT_COMMAND = "plan-draft";
 const BEADS_DRAFT_COMMAND = "beads-draft";
 const STEP_COMMAND = "step";
 const RUN_COMMAND = "run";
+const APPROVE_COMMAND = "approve";
 const MODE_COMMAND = "mode";
 const STATUS_COMMAND = "status";
 const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "fetch_reference", "questionnaire"];
@@ -53,6 +55,13 @@ function syncActiveTools(pi: ExtensionAPI, mode: WorkflowMode): void {
 function parseModeArg(args: string): WorkflowMode | undefined {
 	const value = args.trim().toLowerCase();
 	if (value === "plan" || value === "build") return value;
+	return undefined;
+}
+
+function parseApprovalArg(args: string): WorkflowApprovalState | undefined {
+	const value = args.trim().toLowerCase();
+	if (!value || value === "approved" || value === "approve") return "approved";
+	if (value === "draft") return "draft";
 	return undefined;
 }
 
@@ -232,6 +241,23 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 			syncActiveTools(pi, workflowState.mode);
 			updateFooterStatus(ctx, workflowState);
 			ctx.ui.notify(result.summary, "info");
+			publishStatus(pi, workflowState, Boolean(ctx.model));
+		},
+	});
+
+	pi.registerCommand(APPROVE_COMMAND, {
+		description: "Update Helmsman plan approval state (approved|draft)",
+		handler: async (args, ctx) => {
+			const nextApproval = parseApprovalArg(args);
+			if (!nextApproval) {
+				ctx.ui.notify("Usage: /approve [approved|draft]", "warning");
+				return;
+			}
+
+			workflowState = updateWorkflowApprovalState(workflowState, nextApproval);
+			persistState(pi, workflowState);
+			updateFooterStatus(ctx, workflowState);
+			ctx.ui.notify(`Plan approval set to ${nextApproval}`, "info");
 			publishStatus(pi, workflowState, Boolean(ctx.model));
 		},
 	});

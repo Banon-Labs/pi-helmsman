@@ -5,7 +5,7 @@ import type {
 	WorkflowMode,
 	WorkflowState,
 } from "./types";
-import { buildPlanScaffoldFromGoal } from "./planner";
+import { buildPlanScaffoldFromGoal, buildReadOnlyExplorationCommands } from "./planner";
 
 export const WORKFLOW_STATE_CUSTOM_TYPE = "helmsman-workflow-state";
 
@@ -77,15 +77,30 @@ export function updateWorkflowPlanGoal(state: WorkflowState, goal: string): Work
 	};
 }
 
+function isLikelySlashCommandArtifact(path: string): boolean {
+	const trimmed = path.trim();
+	return /^\/[A-Za-z0-9_-]+$/.test(trimmed);
+}
+
+export function sanitizeWorkflowPlanState(plan: WorkflowState["plan"]): WorkflowState["plan"] {
+	const targetFiles = plan.targetFiles.filter((path) => !isLikelySlashCommandArtifact(path));
+	if (targetFiles.length === plan.targetFiles.length) return plan;
+	return {
+		...plan,
+		targetFiles,
+		explorationCommands: buildReadOnlyExplorationCommands(targetFiles),
+	};
+}
+
 export function updateWorkflowPlanScaffold(state: WorkflowState, goal: string): WorkflowState {
 	return {
 		...state,
-		plan: buildPlanScaffoldFromGoal(goal),
+		plan: sanitizeWorkflowPlanState(buildPlanScaffoldFromGoal(goal)),
 	};
 }
 
 export function mergeWorkflowPlanState(current: WorkflowState["plan"], parsed: ParsedWorkflowPlanResult): WorkflowState["plan"] {
-	return {
+	return sanitizeWorkflowPlanState({
 		goal: parsed.present.goal ? parsed.plan.goal : current.goal,
 		currentPhase: parsed.present.currentPhase ? parsed.plan.currentPhase : current.currentPhase,
 		currentStep: parsed.present.currentStep ? parsed.plan.currentStep : current.currentStep,
@@ -96,7 +111,7 @@ export function mergeWorkflowPlanState(current: WorkflowState["plan"], parsed: P
 		verificationNotes: parsed.present.verificationNotes ? parsed.plan.verificationNotes : current.verificationNotes,
 		explorationCommands: parsed.present.targetFiles ? parsed.plan.explorationCommands : current.explorationCommands,
 		phases: parsed.present.phases ? parsed.plan.phases : current.phases,
-	};
+	});
 }
 
 export function formatWorkflowStatus(state: WorkflowState, plannerRuntime?: string): string {

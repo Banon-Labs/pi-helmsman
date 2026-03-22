@@ -4,6 +4,7 @@ import {
 	formatWorkflowStatus,
 	mergeWorkflowPlanState,
 	restoreWorkflowState,
+	sanitizeWorkflowPlanState,
 	updateWorkflowApprovalState,
 	updateWorkflowMode,
 	updateWorkflowPlanGoal,
@@ -117,6 +118,19 @@ describe("workflow state updates", () => {
 		expect(updated.plan.phases.length).toBeGreaterThan(0);
 	});
 
+	test("drops slash-command artifacts from scaffold target files", () => {
+		const updated = updateWorkflowPlanScaffold(
+			createDefaultWorkflowState(),
+			"Add a /disabled bypass in .pi/extensions/helmsman-workflow.ts and validate with testing/pi-cli-smoke.sh",
+		);
+
+		expect(updated.plan.targetFiles).toEqual([
+			".pi/extensions/helmsman-workflow.ts",
+			"testing/pi-cli-smoke.sh",
+		]);
+		expect(updated.plan.explorationCommands.some((command) => command.includes("/disabled"))).toBe(false);
+	});
+
 	test("updates approval state without losing the existing scaffold", () => {
 		const planned = updateWorkflowPlanScaffold(
 			createDefaultWorkflowState(),
@@ -203,6 +217,25 @@ describe("workflow state updates", () => {
 		expect(merged.constraints).toEqual([]);
 		expect(merged.explorationCommands).toEqual([]);
 		expect(merged.assumptions).toEqual(existingPlan.assumptions);
+	});
+
+	test("sanitizes slash-command artifacts from parsed target files", () => {
+		const sanitized = sanitizeWorkflowPlanState({
+			goal: "Plan a disable flow",
+			currentPhase: 1,
+			currentStep: 1,
+			targetFiles: ["/disabled", ".pi/extensions/helmsman-workflow.ts"],
+			approvalState: "draft",
+			constraints: [],
+			assumptions: [],
+			verificationNotes: [],
+			explorationCommands: ["rtk read .//disabled --max-lines 200"],
+			phases: [],
+		});
+
+		expect(sanitized.targetFiles).toEqual([".pi/extensions/helmsman-workflow.ts"]);
+		expect(sanitized.explorationCommands).toContain("rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200");
+		expect(sanitized.explorationCommands.some((command) => command.includes("/disabled"))).toBe(false);
 	});
 });
 

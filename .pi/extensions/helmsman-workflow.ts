@@ -1,5 +1,5 @@
-import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { complete, type AssistantMessage, type TextContent, type UserMessage } from "@mariozechner/pi-ai";
+import { BorderedLoader, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { buildBeadsDraftOutput, parseBeadsDraftArgs } from "./helmsman-workflow/beads.js";
 import { buildClarifiedGoal, getClarificationQuestion, shouldClarifyGoal } from "./helmsman-workflow/clarify.js";
 import { normalizeRequestedPlanGoal, shouldPromptForPlanGoal } from "./helmsman-workflow/command-goal.js";
@@ -33,6 +33,7 @@ import {
 	formatWorkflowStatus,
 	mergeWorkflowPlanState,
 	restoreWorkflowState,
+	sanitizeWorkflowPlanState,
 	updateWorkflowApprovalState,
 	updateWorkflowMode,
 	updateWorkflowPlanGoal,
@@ -139,6 +140,58 @@ async function resolvePlanGoal(text: string, ctx: ExtensionContext | ExtensionCo
 	if (!trimmed || !ctx.hasUI || !shouldClarifyGoal(trimmed)) return trimmed;
 	const clarification = await ctx.ui.input("Helmsman clarification", getClarificationQuestion(trimmed));
 	return buildClarifiedGoal(trimmed, clarification ?? "");
+}
+
+const PLAN_COMMAND_SYSTEM_PROMPT = [
+	buildPlanModeSystemPrompt(),
+	"Base the plan on the user's stated goal and any scaffold context provided.",
+	"If target files are uncertain, leave them empty instead of guessing from slash-commands or abstract nouns.",
+	"Return only the structured draft plan with the required sections.",
+].join("\n");
+
+async function generatePlanDraft(
+	ctx: ExtensionCommandContext,
+	goal: string,
+	workflowState: WorkflowState,
+): Promise<string | null> {
+	if (!ctx.hasUI || !ctx.model) return null;
+	const scaffold = renderWorkflowPlanDraft(workflowState.plan);
+	return ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
+		const loader = new BorderedLoader(tui, theme, `Planning with ${ctx.model!.id}...`);
+		loader.onAbort = () => done(null);
+
+		const doGenerate = async () => {
+			const apiKey = await ctx.modelRegistry.getApiKey(ctx.model!);
+			const userMessage: UserMessage = {
+				role: "user",
+				content: [{
+					type: "text",
+					text: [
+						`User goal:\n${goal}`,
+						"",
+						"Current scaffold:",
+						scaffold,
+					].join("\n"),
+				}],
+				timestamp: Date.now(),
+			};
+
+			const response = await complete(
+				ctx.model!,
+				{ systemPrompt: PLAN_COMMAND_SYSTEM_PROMPT, messages: [userMessage] },
+				{ apiKey, signal: loader.signal },
+			);
+			if (response.stopReason === "aborted") return null;
+			return response.content
+				.filter((block): block is { type: "text"; text: string } => block.type === "text")
+				.map((block) => block.text)
+				.join("\n")
+				.trim();
+		};
+
+		doGenerate().then(done).catch(() => done(null));
+		return loader;
+	});
 }
 
 export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
@@ -303,7 +356,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand(PLAN_COMMAND, {
-		description: "Enter plan mode and seed a draft planning scaffold from the provided goal",
+		description: "Enter plan mode and ask the planner model for a structured draft plan",
 		handler: async (args, ctx) => {
 			workflowState = updateWorkflowMode(workflowState, "plan");
 			let requestedGoal = normalizeRequestedPlanGoal(args, workflowState.plan.goal);
@@ -318,8 +371,46 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 			syncActiveTools(pi, workflowState.mode);
 			updateFooterStatus(ctx, workflowState);
 			ctx.ui.notify(buildPlanModeActivationNotice(), "info");
+
+			if (!ctx.model) {
+				ctx.ui.notify("Planner model unavailable. Helmsman kept the scaffold, but /plan could not run the planner. Select a model and try again.", "warning");
+				publishStatus(pi, workflowState, false);
+				return;
+			}
+
+			const generatedPlan = resolvedGoal ? await generatePlanDraft(ctx, resolvedGoal, workflowState) : null;
+			if (!generatedPlan) {
+				ctx.ui.notify("Planner run cancelled or failed before Helmsman could draft the plan.", "warning");
+				publishStatus(pi, workflowState, true);
+				return;
+			}
+
+			const parsedPlan = parseWorkflowPlanFromText(generatedPlan);
+			if (!parsedPlan) {
+				pi.sendMessage({
+					customType: `${CUSTOM_MESSAGE_TYPE}-planner-error`,
+					content: generatedPlan,
+					details: { goal: resolvedGoal },
+					display: true,
+				});
+				ctx.ui.notify("Planner responded, but the output was not in Helmsman's structured plan format.", "warning");
+				publishStatus(pi, workflowState, true);
+				return;
+			}
+
+			workflowState = {
+				...workflowState,
+				plan: sanitizeWorkflowPlanState(mergeWorkflowPlanState(workflowState.plan, parsedPlan)),
+			};
+			persistState(pi, workflowState);
+			updateFooterStatus(ctx, workflowState);
 			speakWorkflowMilestone("plan-ready", ttsBackend);
-			publishStatus(pi, workflowState, Boolean(ctx.model));
+			pi.sendMessage({
+				customType: `${CUSTOM_MESSAGE_TYPE}-planner`,
+				content: generatedPlan,
+				details: workflowState.plan,
+				display: true,
+			});
 		},
 	});
 

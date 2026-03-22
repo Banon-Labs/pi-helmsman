@@ -68,6 +68,21 @@ export function updateWorkflowPlanScaffold(state: WorkflowState, goal: string): 
 	};
 }
 
+export function mergeWorkflowPlanState(current: WorkflowState["plan"], parsed: WorkflowState["plan"]): WorkflowState["plan"] {
+	return {
+		goal: parsed.goal || current.goal,
+		currentPhase: parsed.currentPhase ?? current.currentPhase,
+		currentStep: parsed.currentStep ?? current.currentStep,
+		targetFiles: parsed.targetFiles.length > 0 ? parsed.targetFiles : current.targetFiles,
+		approvalState: parsed.approvalState ?? current.approvalState,
+		constraints: parsed.constraints.length > 0 ? parsed.constraints : current.constraints,
+		assumptions: parsed.assumptions.length > 0 ? parsed.assumptions : current.assumptions,
+		verificationNotes: parsed.verificationNotes.length > 0 ? parsed.verificationNotes : current.verificationNotes,
+		explorationCommands: parsed.explorationCommands.length > 0 ? parsed.explorationCommands : current.explorationCommands,
+		phases: parsed.phases.length > 0 ? parsed.phases : current.phases,
+	};
+}
+
 export function formatWorkflowStatus(state: WorkflowState, plannerRuntime?: string): string {
 	const targetLines = state.plan.targetFiles.length > 0 ? state.plan.targetFiles.map((path) => `- ${path}`).join("\n") : "none";
 	const constraintLines = state.plan.constraints.length > 0 ? state.plan.constraints.map((item) => `- ${item}`).join("\n") : "none";

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	createDefaultWorkflowState,
 	formatWorkflowStatus,
+	mergeWorkflowPlanState,
 	restoreWorkflowState,
 	updateWorkflowMode,
 	updateWorkflowPlanGoal,
@@ -104,6 +105,35 @@ describe("workflow state updates", () => {
 		]);
 		expect(updated.plan.explorationCommands).toContain("rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200");
 		expect(updated.plan.phases.length).toBeGreaterThan(0);
+	});
+
+	test("merges parsed plan output without dropping prior scaffold detail when sections are omitted", () => {
+		const existingPlan = updateWorkflowPlanScaffold(
+			createDefaultWorkflowState(),
+			"Inspect .pi/extensions/helmsman-workflow.ts and testing/pi-cli-smoke.sh",
+		).plan;
+		const merged = mergeWorkflowPlanState(existingPlan, {
+			goal: "Inspect .pi/extensions/helmsman-workflow.ts and testing/pi-cli-smoke.sh",
+			currentPhase: 2,
+			currentStep: 1,
+			targetFiles: [],
+			approvalState: "draft",
+			constraints: [],
+			assumptions: [],
+			verificationNotes: ["run bun test"],
+			explorationCommands: [],
+			phases: [{ name: "Implement and verify", steps: ["Update runtime wiring", "Run tests", "Summarize blockers"] }],
+		});
+
+		expect(merged.goal).toBe(existingPlan.goal);
+		expect(merged.currentPhase).toBe(2);
+		expect(merged.currentStep).toBe(1);
+		expect(merged.targetFiles).toEqual(existingPlan.targetFiles);
+		expect(merged.constraints).toEqual(existingPlan.constraints);
+		expect(merged.assumptions).toEqual(existingPlan.assumptions);
+		expect(merged.verificationNotes).toEqual(["run bun test"]);
+		expect(merged.explorationCommands).toEqual(existingPlan.explorationCommands);
+		expect(merged.phases).toEqual([{ name: "Implement and verify", steps: ["Update runtime wiring", "Run tests", "Summarize blockers"] }]);
 	});
 });
 

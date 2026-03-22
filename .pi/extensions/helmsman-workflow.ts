@@ -7,6 +7,7 @@ import { describePlannerRuntime } from "./helmsman-workflow/runtime.js";
 import {
 	createDefaultWorkflowState,
 	formatWorkflowStatus,
+	mergeWorkflowPlanState,
 	restoreWorkflowState,
 	updateWorkflowMode,
 	updateWorkflowPlanGoal,
@@ -123,7 +124,10 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 		if (!lastAssistant) return;
 		const parsedPlan = parseWorkflowPlanFromText(getAssistantText(lastAssistant));
 		if (!parsedPlan) return;
-		workflowState = { ...workflowState, plan: parsedPlan };
+		workflowState = {
+			...workflowState,
+			plan: mergeWorkflowPlanState(workflowState.plan, parsedPlan),
+		};
 		persistState(pi, workflowState);
 		updateFooterStatus(ctx, workflowState);
 	});

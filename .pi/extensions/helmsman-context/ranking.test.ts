@@ -57,6 +57,19 @@ describe("scoreCandidateWithSignals", () => {
 		expect(result.reasons).toContain("repo path mentioned in input");
 	});
 
+	test("adds extra weight for cross-repo action intent in input", () => {
+		const candidate = makeRepoCandidate("pi-mono");
+		const result = scoreCandidateWithSignals(candidate, {
+			currentRepoRoot: "/home/choza/projects/pi-helmsman",
+			inputText: "inspect pi-mono and implement the change there",
+			lastGoalText: "",
+		});
+
+		expect(result.reasons).toContain("repo name mentioned in input");
+		expect(result.reasons).toContain("cross-repo action intent in input");
+		expect(result.score).toBe(60);
+	});
+
 	test("rewards exact repo-relative directory evidence most strongly", () => {
 		const candidate = makeRepoCandidate("pi-mono");
 		mkdirSync(join(candidate.repoRoot, "packages/coding-agent/docs"), { recursive: true });
@@ -100,7 +113,7 @@ describe("scoreCandidateWithSignals", () => {
 			lastGoalText: "",
 		});
 
-		expect(result.reasons).toContain("repo-relative path is unverified in candidate");
-		expect(result.score).toBeLessThan(50);
+		expect(result.reasons).not.toContain("repo-relative path is unverified in candidate");
+		expect(result.score).toBe(0);
 	});
 });

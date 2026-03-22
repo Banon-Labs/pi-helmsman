@@ -57,6 +57,23 @@ function findExplicitRepoMention(candidates: RepoCandidate[], inputText: string)
 	return candidates.find((candidate) => normalized.includes(candidate.repoName.toLowerCase()));
 }
 
+function hasCrossRepoActionIntent(inputText: string): boolean {
+	return /\b(?:switch|move|work|implement|change|update|fix|inspect|edit)\b[\s\S]*\b(?:there|in|inside|within)\b/i.test(inputText)
+		|| /\b(?:make the change there|implement the change there|work there)\b/i.test(inputText);
+}
+
+function hasStrongMismatchEvidence(candidate: RepoCandidate | undefined, inputText: string): boolean {
+	if (!candidate) return false;
+	if (candidate.reasons.some((reason) =>
+		reason === "repo path mentioned in input"
+		|| reason === "repo-relative directory path exists in candidate"
+		|| reason === "repo-relative file path exists in candidate",
+	)) {
+		return true;
+	}
+	return candidate.reasons.includes("repo name mentioned in input") && hasCrossRepoActionIntent(inputText);
+}
+
 function summarize(state: ContextAssessment["state"], selectedRepo: RepoCandidate | undefined, currentRepoRoot: string | undefined) {
 	if (state === "healthy") {
 		return `Context healthy in ${selectedRepo?.repoName ?? currentRepoRoot ?? "current repo"}`;
@@ -85,17 +102,24 @@ function explainDecision(selectedRepo: RepoCandidate | undefined, currentRepoCan
 export function assessContext(input: AssessContextInput): ContextAssessment {
 	const rankedCandidates = rankCandidates(input, input.candidates, input.inputText, input.currentRepoRoot, input.lastGoalText ?? "");
 	const explicitRepo = findExplicitRepoMention(rankedCandidates, input.inputText);
-	const selectedRepo = explicitRepo ?? rankedCandidates[0];
 	const currentRepoCandidate = input.currentRepoRoot
 		? rankedCandidates.find((candidate) => candidate.repoRoot === input.currentRepoRoot)
 		: undefined;
+	const selectedRepo = explicitRepo && hasStrongMismatchEvidence(explicitRepo, input.inputText)
+		? explicitRepo
+		: rankedCandidates[0];
 
 	let state: ContextAssessment["state"] = "healthy";
 	if (!input.currentRepoRoot) {
 		state = "uncertain";
-	} else if (explicitRepo && explicitRepo.repoRoot !== input.currentRepoRoot) {
+	} else if (explicitRepo && explicitRepo.repoRoot !== input.currentRepoRoot && hasStrongMismatchEvidence(explicitRepo, input.inputText)) {
 		state = "mismatch";
-	} else if (selectedRepo && selectedRepo.repoRoot !== input.currentRepoRoot && selectedRepo.score >= 60) {
+	} else if (
+		selectedRepo
+		&& selectedRepo.repoRoot !== input.currentRepoRoot
+		&& selectedRepo.score >= 60
+		&& hasStrongMismatchEvidence(selectedRepo, input.inputText)
+	) {
 		state = "mismatch";
 	}
 

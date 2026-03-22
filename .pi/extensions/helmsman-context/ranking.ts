@@ -11,6 +11,11 @@ function includesCaseInsensitive(haystack: string, needle: string): boolean {
 	return haystack.toLowerCase().includes(needle.toLowerCase());
 }
 
+function hasCrossRepoActionIntent(inputText: string): boolean {
+	return /\b(?:switch|move|work|implement|change|update|fix|inspect|edit)\b[\s\S]*\b(?:there|in|inside|within)\b/i.test(inputText)
+		|| /\b(?:make the change there|implement the change there|work there)\b/i.test(inputText);
+}
+
 function scoreRelativePathEvidence(repoRoot: string, inputText: string): { score: number; reason?: string } {
 	const hint = detectSuggestedFolder({ targetRepoRoot: repoRoot, inputText });
 	if (!hint || hint.source !== "relative") return { score: 0 };
@@ -26,10 +31,7 @@ function scoreRelativePathEvidence(repoRoot: string, inputText: string): { score
 			reason: "repo-relative file path exists in candidate",
 		};
 	}
-	return {
-		score: 10,
-		reason: "repo-relative path is unverified in candidate",
-	};
+	return { score: 0 };
 }
 
 export function scoreCandidateWithSignals(candidate: RepoCandidate, signals: RankingSignals): RepoCandidate {
@@ -52,14 +54,17 @@ export function scoreCandidateWithSignals(candidate: RepoCandidate, signals: Ran
 		score += 70;
 		reasons.push("repo name mentioned in goal");
 	} else if (includesCaseInsensitive(signals.inputText, candidate.repoName)) {
-		score += 60;
+		score += 10;
 		reasons.push("repo name mentioned in input");
+		if (hasCrossRepoActionIntent(signals.inputText)) {
+			score += 50;
+			reasons.push("cross-repo action intent in input");
+		}
 	}
 	const relativePathEvidence = scoreRelativePathEvidence(candidate.repoRoot, signals.inputText);
 	if (relativePathEvidence.score > 0) {
 		score += relativePathEvidence.score;
 		if (relativePathEvidence.reason) reasons.push(relativePathEvidence.reason);
 	}
-
 	return { ...candidate, score, reasons };
 }

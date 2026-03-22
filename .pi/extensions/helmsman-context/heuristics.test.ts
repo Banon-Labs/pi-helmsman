@@ -2,6 +2,7 @@ import { mkdtempSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
+import { formatAssessment } from "../helmsman-context";
 import { assessContext, isReadOnlyBashCommand } from "./heuristics";
 import type { RepoCandidate } from "./types";
 
@@ -59,6 +60,43 @@ describe("assessContext", () => {
 		expect(result.state).toBe("mismatch");
 		expect(result.selectedRepo?.repoName).toBe("pi-mono");
 		expect(result.blockMutations).toBe(true);
+	});
+
+	test("does not hard-switch repos on weak stale-name residue alone", () => {
+		const currentCandidate = makeCandidate("pi-helmsman", { hasBeads: true, isCurrent: true });
+		const beadsCandidate = makeCandidate("beads", { hasBeads: true });
+
+		const result = assessContext({
+			workspaceRoot: dirname(currentCandidate.repoRoot),
+			currentRepoRoot: currentCandidate.repoRoot,
+			inputText: "beads noisy/polluted",
+			workspaceEvidenceText: currentCandidate.repoName,
+			candidates: [currentCandidate, beadsCandidate],
+		});
+
+		expect(result.state).toBe("healthy");
+		expect(result.selectedRepo?.repoRoot).toBe(currentCandidate.repoRoot);
+		expect(result.blockMutations).toBe(false);
+	});
+
+	test("renders confidence labels for strong and weak candidates", () => {
+		const currentCandidate = makeCandidate("pi-helmsman", { hasBeads: true, isCurrent: true });
+		const beadsCandidate = makeCandidate("beads", { hasBeads: true });
+
+		const result = assessContext({
+			workspaceRoot: dirname(currentCandidate.repoRoot),
+			currentRepoRoot: currentCandidate.repoRoot,
+			inputText: "beads noisy/polluted",
+			workspaceEvidenceText: currentCandidate.repoName,
+			candidates: [currentCandidate, beadsCandidate],
+		});
+		const rendered = formatAssessment(result);
+
+		expect(rendered).toContain("confidence=90% (high confidence)");
+		expect(rendered).toContain("confidence=30% (low confidence)");
+		expect(rendered).not.toContain("⚪");
+		expect(rendered).not.toContain("🟡");
+		expect(rendered).not.toContain("🟢");
 	});
 
 	test("surfaces a suggested working folder when input mentions a subpath in the selected repo", () => {

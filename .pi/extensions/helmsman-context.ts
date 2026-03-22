@@ -32,7 +32,18 @@ function getWorkspaceRoot(cwd: string): string {
 	return dirname(repoRoot ?? cwd);
 }
 
-function formatAssessment(assessment: ContextAssessment): string {
+export function getConfidencePercent(score: number): number {
+	return Math.max(0, Math.min(100, score));
+}
+
+export function getConfidenceLabel(score: number): string {
+	const percent = getConfidencePercent(score);
+	if (percent < 50) return `${percent}% (low confidence)`;
+	if (percent < 80) return `${percent}% (medium confidence)`;
+	return `${percent}% (high confidence)`;
+}
+
+export function formatAssessment(assessment: ContextAssessment): string {
 	const candidateLines = assessment.candidates
 		.slice(0, 5)
 		.map((candidate, index) => {
@@ -40,7 +51,7 @@ function formatAssessment(assessment: ContextAssessment): string {
 				.filter(Boolean)
 				.join(", ");
 			const details = [markers || undefined, candidate.reasons.join(", ") || undefined].filter(Boolean).join("; ");
-			return `${index + 1}. ${candidate.repoName} (${candidate.repoRoot}) score=${candidate.score}${details ? ` — ${details}` : ""}`;
+			return `${index + 1}. ${candidate.repoName} (${candidate.repoRoot}) confidence=${getConfidenceLabel(candidate.score)} score=${candidate.score}${details ? ` — ${details}` : ""}`;
 		})
 		.join("\n");
 

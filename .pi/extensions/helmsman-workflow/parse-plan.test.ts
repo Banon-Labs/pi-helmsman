@@ -134,4 +134,55 @@ Draft`);
 		expect(parsed?.plan.phases[0]?.name).toContain("Audit current prompt behavior");
 		expect(parsed?.plan.targetFiles[0]).toContain("helmsman-workflow.ts");
 	});
+
+	test("parses live markdown plan output that uses bullets, headings, and checkbox-style steps", () => {
+		const parsed = parseWorkflowPlanFromText(`## Goal
+Improve planner phase parsing tolerance in .pi/extensions/helmsman-workflow/parse-plan.ts.
+
+## Constraints
+- Keep the change scoped.
+
+## Target Files
+- .pi/extensions/helmsman-workflow/parse-plan.ts
+- .pi/extensions/helmsman-workflow/parse-plan.test.ts
+
+## Current Phase
+Phase 1
+
+## Plan
+### Phase 1 — Inspect current parser behavior
+- Review live planner response shapes.
+- Confirm why phase bullets were dropped.
+- Add a failing parser test.
+
+### Phase 2 — Implement parser tolerance
+- [ ] Accept heading-style phase markers.
+- [ ] Accept bullet and checkbox step lines.
+- [ ] Re-run focused parser coverage.
+
+## Verification Notes
+- Run bun test for planner parser coverage.
+
+## Approval State
+Draft`);
+
+		expect(parsed).not.toBeNull();
+		expect(parsed?.plan.phases).toHaveLength(2);
+		expect(parsed?.plan.phases[0]).toEqual({
+			name: "Inspect current parser behavior",
+			steps: [
+				"Review live planner response shapes.",
+				"Confirm why phase bullets were dropped.",
+				"Add a failing parser test.",
+			],
+		});
+		expect(parsed?.plan.phases[1]).toEqual({
+			name: "Implement parser tolerance",
+			steps: [
+				"Accept heading-style phase markers.",
+				"Accept bullet and checkbox step lines.",
+				"Re-run focused parser coverage.",
+			],
+		});
+	});
 });

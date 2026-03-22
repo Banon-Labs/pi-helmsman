@@ -13,7 +13,7 @@ function unwrapMarkdownFormatting(value: string): string {
 }
 
 function normalizeSectionHeaderLine(line: string): string {
-	return unwrapMarkdownFormatting(line.trim().replace(/\s{2,}$/g, ""));
+	return unwrapMarkdownFormatting(line.trim().replace(/^#{1,6}\s+/, "").replace(/\s{2,}$/g, ""));
 }
 
 function isSectionHeader(line: string, label: string): { matches: boolean; inlineValue: string | null } {
@@ -60,6 +60,18 @@ function parseBulletList(section: string | null): string[] {
 		.filter(Boolean);
 }
 
+function normalizePlanLine(line: string): string {
+	return unwrapMarkdownFormatting(
+		line
+			.trim()
+			.replace(/^#{1,6}\s+/, "")
+			.replace(/^[-*+]\s+/, "")
+			.replace(/^\d+[.)]\s+/, "")
+			.replace(/^\[ ?[xX]? ?\]\s+/, "")
+			.replace(/\s{2,}$/g, ""),
+	);
+}
+
 function parsePhases(planSection: string | null): WorkflowPlanPhase[] {
 	if (!planSection) return [];
 	const lines = planSection.split("\n");
@@ -68,17 +80,23 @@ function parsePhases(planSection: string | null): WorkflowPlanPhase[] {
 
 	for (const rawLine of lines) {
 		const line = rawLine.trim();
-		const withoutListPrefix = line.replace(/^\d+\.\s+/, "");
-		const normalized = unwrapMarkdownFormatting(withoutListPrefix.replace(/\s{2,}$/g, ""));
-		const phaseMatch = normalized.match(/^Phase\s+\d+\s*(?::|[-–])\s*(.+?)(?:\s*\(\d+\s+steps\))?$/i);
+		if (!line) continue;
+		const normalized = normalizePlanLine(line);
+		const phaseMatch = normalized.match(/^Phase\s+(\d+)\s*(?::|[-–—])\s*(.+?)(?:\s*\(\d+\s+steps\))?$/i);
 		if (phaseMatch) {
-			current = { name: phaseMatch[1].trim(), steps: [] };
+			current = { name: phaseMatch[2].trim(), steps: [] };
 			phases.push(current);
 			continue;
 		}
-		const stepMatch = line.match(/^\d+\.\s+(.+)$/);
-		if (stepMatch && current) {
-			current.steps.push(unwrapMarkdownFormatting(stepMatch[1]).trim());
+		if (!current) continue;
+
+		const stepText = normalizePlanLine(line);
+		const looksLikePhaseEcho = /^Phase\s+\d+\b/i.test(stepText);
+		if (!stepText || looksLikePhaseEcho) continue;
+
+		const isStepLine = /^\s*(?:[-*+]\s+|\d+[.)]\s+|\[ ?[xX]? ?\]\s+)/.test(line);
+		if (isStepLine) {
+			current.steps.push(stepText);
 		}
 	}
 

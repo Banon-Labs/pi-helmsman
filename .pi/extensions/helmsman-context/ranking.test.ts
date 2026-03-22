@@ -1,3 +1,6 @@
+import { mkdtempSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
 import { scoreCandidateWithSignals } from "./ranking.ts";
 import type { RepoCandidate } from "./types.ts";
@@ -10,6 +13,17 @@ const baseCandidate: RepoCandidate = {
 	score: 0,
 	reasons: [],
 };
+
+function makeRepoCandidate(repoName: string): RepoCandidate {
+	return {
+		repoRoot: mkdtempSync(join(tmpdir(), `${repoName}-`)),
+		repoName,
+		hasBeads: false,
+		isCurrent: false,
+		score: 0,
+		reasons: [],
+	};
+}
 
 describe("scoreCandidateWithSignals", () => {
 	test("rewards exact repo-name mention in the goal", () => {
@@ -41,5 +55,32 @@ describe("scoreCandidateWithSignals", () => {
 		});
 
 		expect(result.reasons).toContain("repo path mentioned in input");
+	});
+
+	test("rewards repo-relative folder evidence when the path exists in the candidate repo", () => {
+		const candidate = makeRepoCandidate("pi-mono");
+		mkdirSync(join(candidate.repoRoot, "packages/coding-agent/docs"), { recursive: true });
+
+		const result = scoreCandidateWithSignals(candidate, {
+			currentRepoRoot: "/home/choza/projects/pi-helmsman",
+			inputText: "update packages/coding-agent/docs and make the change there",
+			lastGoalText: "",
+		});
+
+		expect(result.reasons).toContain("repo-relative path exists in candidate");
+		expect(result.score).toBeGreaterThan(0);
+	});
+
+	test("does not reward repo-relative folder evidence when the path is absent in the candidate repo", () => {
+		const candidate = makeRepoCandidate("deadlock-VA");
+		mkdirSync(join(candidate.repoRoot, "src/components"), { recursive: true });
+
+		const result = scoreCandidateWithSignals(candidate, {
+			currentRepoRoot: "/home/choza/projects/pi-helmsman",
+			inputText: "update packages/coding-agent/docs and make the change there",
+			lastGoalText: "",
+		});
+
+		expect(result.reasons).not.toContain("repo-relative path exists in candidate");
 	});
 });

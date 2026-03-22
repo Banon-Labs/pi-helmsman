@@ -1,3 +1,6 @@
+import { mkdtempSync, mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
 import { assessContext, isReadOnlyBashCommand } from "./heuristics";
 import type { RepoCandidate } from "./types";
@@ -20,6 +23,17 @@ const candidates: RepoCandidate[] = [
 		reasons: [],
 	},
 ];
+
+function makeCandidate(repoName: string, options?: { hasBeads?: boolean; isCurrent?: boolean }) {
+	return {
+		repoRoot: mkdtempSync(join(tmpdir(), `${repoName}-`)),
+		repoName,
+		hasBeads: options?.hasBeads ?? false,
+		isCurrent: options?.isCurrent ?? false,
+		score: 0,
+		reasons: [],
+	} satisfies RepoCandidate;
+}
 
 describe("assessContext", () => {
 	test("marks context healthy when current repo is coherent and no conflicting repo is requested", () => {
@@ -71,6 +85,24 @@ describe("assessContext", () => {
 
 		expect(result.state).toBe("uncertain");
 		expect(result.blockMutations).toBe(true);
+	});
+
+	test("prefers a candidate with matching repo-relative path evidence over ambient current-repo bias", () => {
+		const currentCandidate = makeCandidate("pi-helmsman", { hasBeads: true, isCurrent: true });
+		const targetCandidate = makeCandidate("pi-mono");
+		mkdirSync(join(targetCandidate.repoRoot, "packages/coding-agent/docs"), { recursive: true });
+
+		const result = assessContext({
+			workspaceRoot: dirname(targetCandidate.repoRoot),
+			currentRepoRoot: currentCandidate.repoRoot,
+			inputText: "update packages/coding-agent/docs and make the change there",
+			workspaceEvidenceText: currentCandidate.repoName,
+			candidates: [currentCandidate, targetCandidate],
+		});
+
+		expect(result.selectedRepo?.repoRoot).toBe(targetCandidate.repoRoot);
+		expect(result.selectedRepo?.reasons).toContain("repo-relative path exists in candidate");
+		expect(result.state).toBe("mismatch");
 	});
 });
 

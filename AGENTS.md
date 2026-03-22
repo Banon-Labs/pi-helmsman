@@ -12,10 +12,15 @@ bd close <id>         # Complete work
 bd dolt push          # Push beads data to remote
 ```
 
-## Token-Efficient File Reads
+## Token-Efficient Read-Only Inspection
 
-- When reading files through shell commands, prefer `rtk read <path>` first because it trims tokens.
-- Keep using non-mutating read paths for inspection.
+- Prefer RTK wrappers first for read-only inspection commands because they trim tokens and keep outputs compact.
+- Preferred forms when applicable:
+  - file reads: `rtk read <path>`
+  - git inspection: `rtk git status`, `rtk git diff`, `rtk git log`, `rtk git show`, `rtk git branch`
+  - search/discovery: `rtk find ...`, `rtk grep ...`, `rtk ls ...`
+- Use native commands when mutation/control behavior matters, when RTK lacks the needed subcommand/flags, or when the non-RTK form is required for correctness.
+- Keep using non-mutating inspection paths unless the task explicitly requires mutation.
 
 ## Test-Driven Development Preference
 

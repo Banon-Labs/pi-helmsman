@@ -1,5 +1,6 @@
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { buildBeadsDraftOutput } from "./helmsman-workflow/beads.js";
 import { buildClarifiedGoal, getClarificationQuestion, shouldClarifyGoal } from "./helmsman-workflow/clarify.js";
 import { normalizeRequestedPlanGoal, shouldPromptForPlanGoal } from "./helmsman-workflow/command-goal.js";
 import { renderWorkflowPlanDraft } from "./helmsman-workflow/draft.js";
@@ -21,6 +22,7 @@ const CUSTOM_MESSAGE_TYPE = "helmsman-workflow";
 const STATUS_KEY = "helmsman-workflow";
 const PLAN_COMMAND = "plan";
 const PLAN_DRAFT_COMMAND = "plan-draft";
+const BEADS_DRAFT_COMMAND = "beads-draft";
 const STEP_COMMAND = "step";
 const RUN_COMMAND = "run";
 const MODE_COMMAND = "mode";
@@ -162,6 +164,20 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 				customType: `${CUSTOM_MESSAGE_TYPE}-draft`,
 				content: renderWorkflowPlanDraft(workflowState.plan),
 				details: workflowState.plan,
+				display: true,
+			});
+		},
+	});
+
+	pi.registerCommand(BEADS_DRAFT_COMMAND, {
+		description: "Show the Beads-facing draft preview and JSON derived from the current Helmsman plan",
+		handler: async (_args, ctx) => {
+			const draft = buildBeadsDraftOutput(workflowState.plan);
+			ctx.ui.notify("Showing Beads draft preview and JSON.", "info");
+			pi.sendMessage({
+				customType: `${CUSTOM_MESSAGE_TYPE}-beads-draft`,
+				content: `${draft.previewText}\n\nJSON:\n${draft.json}`,
+				details: draft,
 				display: true,
 			});
 		},

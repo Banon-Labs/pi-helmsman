@@ -34,6 +34,24 @@ const deadlock: RepoCandidate = {
 	reasons: ["has .beads"],
 };
 
+const alphaPathTie: RepoCandidate = {
+	repoRoot: "/tmp/workspace/alpha-repo",
+	repoName: "alpha-repo",
+	hasBeads: false,
+	isCurrent: false,
+	score: 120,
+	reasons: ["repo-relative directory path exists in candidate"],
+};
+
+const betaPathTie: RepoCandidate = {
+	repoRoot: "/tmp/workspace/beta-repo",
+	repoName: "beta-repo",
+	hasBeads: false,
+	isCurrent: false,
+	score: 120,
+	reasons: ["repo-relative directory path exists in candidate"],
+};
+
 describe("chooseSelectableCandidates", () => {
 	test("returns the top scoring tied candidates for selection", () => {
 		const result = chooseSelectableCandidates([helmsman, mono, deadlock]);
@@ -64,6 +82,12 @@ describe("formatSelectableCandidateDetails", () => {
 		expect(details).toContain("Path: /home/choza/projects/pi-helmsman");
 		expect(details).toContain("Reasons: current repo, has .beads");
 		expect(details).toContain("2. pi-mono");
+	});
+
+	test("calls out shared path-match evidence across tied candidates", () => {
+		const details = formatSelectableCandidateDetails([alphaPathTie, betaPathTie]);
+		expect(details).toContain("Shared tie evidence: repo-relative directory path exists in candidate");
+		expect(details).toContain("Distinguishing evidence: none beyond shared tie evidence");
 	});
 });
 

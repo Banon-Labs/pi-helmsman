@@ -20,6 +20,7 @@ bd dolt push          # Push beads data to remote
   - git inspection → `rtk git status`, `rtk git diff`, `rtk git log`, `rtk git show`, `rtk git branch`
   - search/discovery → `rtk find ...`, `rtk grep ...`, `rtk ls ...`
 - Before using native `git status`, `git diff`, `find`, `grep`, `ls`, or shell-based file reads for inspection, first ask: "Is there an RTK form for this?" If yes, prefer the RTK form.
+- If the right RTK wrapper is not obvious, check `"$(which rtk)" --help` or `rtk help <subcommand>` before falling back to a native read-only inspection command.
 - Allowed exceptions:
   - mutation/control behavior matters,
   - RTK lacks the needed subcommand or flags,

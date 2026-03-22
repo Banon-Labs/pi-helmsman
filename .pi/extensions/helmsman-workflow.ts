@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { buildClarifiedGoal, getClarificationQuestion, shouldClarifyGoal } from "./helmsman-workflow/clarify.js";
 import {
 	createDefaultWorkflowState,
 	formatWorkflowStatus,
@@ -54,6 +55,13 @@ function isSlashCommand(text: string): boolean {
 	return text.trimStart().startsWith("/");
 }
 
+async function resolvePlanGoal(text: string, ctx: ExtensionContext | ExtensionCommandContext): Promise<string> {
+	const trimmed = text.trim();
+	if (!trimmed || !ctx.hasUI || !shouldClarifyGoal(trimmed)) return trimmed;
+	const clarification = await ctx.ui.input("Helmsman clarification", getClarificationQuestion(trimmed));
+	return buildClarifiedGoal(trimmed, clarification ?? "");
+}
+
 export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 	let workflowState = createDefaultWorkflowState();
 
@@ -65,11 +73,15 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 		updateFooterStatus(ctx, workflowState);
 	});
 
-	pi.on("input", async (event, _ctx) => {
+	pi.on("input", async (event, ctx) => {
 		if (workflowState.mode !== "plan") return { action: "continue" as const };
 		if (!event.text.trim() || isSlashCommand(event.text)) return { action: "continue" as const };
-		workflowState = updateWorkflowPlanScaffold(workflowState, event.text);
+		const resolvedGoal = await resolvePlanGoal(event.text, ctx);
+		workflowState = updateWorkflowPlanScaffold(workflowState, resolvedGoal);
 		persistState(pi, workflowState);
+		if (resolvedGoal !== event.text.trim()) {
+			return { action: "transform" as const, text: resolvedGoal, images: event.images };
+		}
 		return { action: "continue" as const };
 	});
 
@@ -89,8 +101,9 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 		description: "Enter plan mode and seed a draft planning scaffold from the provided goal",
 		handler: async (args, ctx) => {
 			workflowState = updateWorkflowMode(workflowState, "plan");
-			workflowState = args.trim()
-				? updateWorkflowPlanScaffold(workflowState, args)
+			const resolvedGoal = args.trim() ? await resolvePlanGoal(args, ctx) : workflowState.plan.goal;
+			workflowState = resolvedGoal
+				? updateWorkflowPlanScaffold(workflowState, resolvedGoal)
 				: updateWorkflowPlanGoal(workflowState, workflowState.plan.goal);
 			persistState(pi, workflowState);
 			syncActiveTools(pi, workflowState.mode);

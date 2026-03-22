@@ -12,6 +12,7 @@
   },
   "pi": {
     "extensions": [
+      "./.pi/extensions/cupcake-policy.ts",
       "./.pi/extensions/fetch-reference.ts",
       "./.pi/extensions/helmsman-context.ts",
       "./.pi/extensions/helmsman-workflow.ts",

@@ -1,26 +1,16 @@
-import { existsSync } from "node:fs";
-import { delimiter, join } from "node:path";
-import { spawn } from "node:child_process";
+import type { VoiceProvider } from "../smart-voice-notify/config.js";
+import { resolveVoiceNotifyConfig } from "../smart-voice-notify/config.js";
+import { detectAvailableVoiceProviders, findExecutableInPath, resolveVoiceProvider } from "../smart-voice-notify/providers.js";
+import { sanitizeVoiceMessage, speakVoiceMessage } from "../smart-voice-notify/runtime.js";
 
-export type WorkflowTtsBackend = "say" | "espeak-ng" | "spd-say";
+export type WorkflowTtsBackend = VoiceProvider;
 export type WorkflowTtsMilestone = "plan-ready" | "approval-required" | "phase-complete" | "run-complete" | "safety-block";
 
-const BACKEND_CANDIDATES: WorkflowTtsBackend[] = ["say", "espeak-ng", "spd-say"];
-
-export function findExecutableInPath(command: string, pathEnv = process.env.PATH ?? ""): string | undefined {
-	for (const dir of pathEnv.split(delimiter).filter(Boolean)) {
-		const candidate = join(dir, command);
-		if (existsSync(candidate)) return candidate;
-	}
-	return undefined;
-}
-
 export function detectWorkflowTtsBackend(pathEnv = process.env.PATH ?? ""): WorkflowTtsBackend | undefined {
-	for (const command of BACKEND_CANDIDATES) {
-		if (findExecutableInPath(command, pathEnv)) return command;
-	}
-	return undefined;
+	return resolveVoiceProvider(detectAvailableVoiceProviders(pathEnv));
 }
+
+export { findExecutableInPath, sanitizeVoiceMessage as sanitizeWorkflowTtsMessage };
 
 export function buildWorkflowTtsMessage(milestone: WorkflowTtsMilestone): string {
 	switch (milestone) {
@@ -37,20 +27,9 @@ export function buildWorkflowTtsMessage(milestone: WorkflowTtsMilestone): string
 	}
 }
 
-export function sanitizeWorkflowTtsMessage(message: string): string {
-	return message.replace(/\s+/g, " ").trim().slice(0, 120);
-}
-
 export function getWorkflowTtsArgs(backend: WorkflowTtsBackend, message: string): string[] {
-	const sanitized = sanitizeWorkflowTtsMessage(message);
-	switch (backend) {
-		case "say":
-			return [sanitized];
-		case "espeak-ng":
-			return [sanitized];
-		case "spd-say":
-			return [sanitized];
-	}
+	const sanitized = sanitizeVoiceMessage(message, resolveVoiceNotifyConfig().maxChars);
+	return [sanitized];
 }
 
 export function speakWorkflowMilestone(
@@ -59,10 +38,7 @@ export function speakWorkflowMilestone(
 ): WorkflowTtsBackend | undefined {
 	if (!backend) return undefined;
 	const message = buildWorkflowTtsMessage(milestone);
-	const child = spawn(backend, getWorkflowTtsArgs(backend, message), {
-		detached: true,
-		stdio: "ignore",
-	});
-	child.unref();
+	const config = resolveVoiceNotifyConfig();
+	speakVoiceMessage(message, { ...config, preferredProvider: backend });
 	return backend;
 }

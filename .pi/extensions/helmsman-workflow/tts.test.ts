@@ -10,8 +10,6 @@ import {
 describe("findExecutableInPath", () => {
 	test("finds executables in a synthetic PATH", () => {
 		const pathEnv = "/tmp/one:/usr/local/bin:/opt/bin";
-		// best-effort deterministic check via basename candidates we know do not exist here is hard,
-		// so only assert absence for nonsense and leave presence to backend detection tests.
 		expect(findExecutableInPath("definitely-not-a-real-command", pathEnv)).toBeUndefined();
 	});
 });
@@ -37,7 +35,7 @@ describe("buildWorkflowTtsMessage", () => {
 
 describe("sanitizeWorkflowTtsMessage", () => {
 	test("collapses whitespace and trims long messages", () => {
-		const sanitized = sanitizeWorkflowTtsMessage("  line one\n\nline two   " + "x".repeat(200));
+		const sanitized = sanitizeWorkflowTtsMessage("  line one\n\nline two   " + "x".repeat(200), 120);
 		expect(sanitized.startsWith("line one line two")).toBe(true);
 		expect(sanitized.length).toBeLessThanOrEqual(120);
 	});

@@ -17,6 +17,7 @@
       "./.pi/extensions/helmsman-context.ts",
       "./.pi/extensions/helmsman-workflow.ts",
       "./.pi/extensions/rtk-first.ts",
+      "./.pi/extensions/smart-voice-notify.ts",
       "./.pi/extensions/web-content.ts",
       "./.pi/extensions/web-search.ts"
     ]

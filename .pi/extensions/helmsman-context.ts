@@ -25,7 +25,7 @@ import type { ContextAssessment } from "./helmsman-context/types.js";
 const COMMAND_NAME = "context";
 const SWITCH_COMMAND_NAME = "context-switch";
 const CUSTOM_TYPE = "helmsman-context";
-const READ_ONLY_CUSTOM_TOOLS = new Set(["fetch_reference", "questionnaire"]);
+const READ_ONLY_CUSTOM_TOOLS = new Set(["fetch_reference", "fetch_web", "search_web", "questionnaire"]);
 
 function getWorkspaceRoot(cwd: string): string {
 	const repoRoot = findRepoRoot(cwd);

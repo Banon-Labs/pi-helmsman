@@ -14,6 +14,7 @@ describe("helmsman workflow voice helpers", () => {
 		expect(prompt).toContain("Treat the current request as planning work");
 		expect(prompt).toContain("Surface assumptions and uncertainty plainly");
 		expect(prompt).toContain("fetch_web");
+		expect(prompt).toContain("search_web");
 	});
 
 	test("activation notice emphasizes read-only behavior and clarification", () => {

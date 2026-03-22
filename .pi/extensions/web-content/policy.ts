@@ -67,6 +67,11 @@ export function ensureWebTextLikeContentType(contentType: string): void {
 	const normalized = contentType.toLowerCase();
 	if (normalized.startsWith("text/html")) return;
 	if (TEXT_LIKE_PREFIXES.some((prefix) => normalized.startsWith(prefix))) return;
+	if (normalized.startsWith("image/")) {
+		throw new Error(
+			`Fetched content type is image-based (${contentType}). fetch_web stays text-first for now; fetch a documentation page or other textual source instead.`,
+		);
+	}
 	throw new Error(`Fetched content type is not allowed for text-first web fetch: ${contentType}`);
 }
 

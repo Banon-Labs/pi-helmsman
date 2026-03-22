@@ -1,3 +1,5 @@
+export type WebContentFormat = "text" | "markdown" | "html";
+
 export interface MaterializedWebContent {
 	originalUrl: string;
 	normalizedUrl: string;
@@ -12,6 +14,7 @@ export interface MaterializedWebContent {
 	sha256: string;
 	fetchedAt: string;
 	policyVersion: number;
+	requestedFormat: WebContentFormat;
 	title?: string;
 	previewText: string;
 }

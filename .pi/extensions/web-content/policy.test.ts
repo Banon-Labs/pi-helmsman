@@ -31,6 +31,6 @@ describe("ensureWebTextLikeContentType", () => {
 
 	test("rejects binary-like responses", () => {
 		expect(() => ensureWebTextLikeContentType("application/pdf")).toThrow(/not allowed/);
-		expect(() => ensureWebTextLikeContentType("image/png")).toThrow(/not allowed/);
+		expect(() => ensureWebTextLikeContentType("image/png")).toThrow(/stays text-first/);
 	});
 });

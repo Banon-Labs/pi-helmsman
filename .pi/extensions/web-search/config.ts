@@ -1,0 +1,9 @@
+export const TOOL_NAME = "search_web";
+export const COMMAND_NAME = "search-web";
+export const CACHE_ROOT = ".pi/web-searches";
+export const POLICY_VERSION = 1;
+export const FETCH_TIMEOUT_MS = 15_000;
+export const DEFAULT_LIMIT = 5;
+export const MAX_LIMIT = 10;
+export const PROVIDER = "duckduckgo-html";
+export const SEARCH_BASE_URL = "https://duckduckgo.com/html/";

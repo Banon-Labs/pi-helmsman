@@ -53,8 +53,8 @@ const APPROVE_COMMAND = "approve";
 const HANDOFF_COMMAND = "handoff";
 const MODE_COMMAND = "mode";
 const STATUS_COMMAND = "status";
-const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "fetch_reference", "questionnaire"];
-const BUILD_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "edit", "write", "fetch_reference"];
+const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "fetch_reference", "fetch_web", "search_web", "questionnaire"];
+const BUILD_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "edit", "write", "fetch_reference", "fetch_web", "search_web"];
 
 function updateFooterStatus(ctx: ExtensionCommandContext | ExtensionContext, state: WorkflowState): void {
 	ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg(state.mode === "plan" ? "warning" : "accent", `wf:${state.mode}`));

@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { CACHE_ROOT, FETCH_TIMEOUT_MS, MAX_BYTES, POLICY_VERSION } from "./config.js";
 import { ensureWebTextLikeContentType, isHtmlContentType, normalizeWebUrl } from "./policy.js";
-import type { MaterializedWebContent } from "./types.js";
+import type { MaterializedWebContent, WebContentFormat } from "./types.js";
 
 function deriveExtension(contentType: string, pathname: string): string {
 	const byPath = extname(pathname);
@@ -79,16 +79,16 @@ function extractHtmlTitle(html: string): string | undefined {
 	return title || undefined;
 }
 
-function htmlToText(html: string): string {
-	const stripped = html
+function stripHtml(html: string): string {
+	return html
 		.replace(/<script[\s\S]*?<\/script>/gi, " ")
 		.replace(/<style[\s\S]*?<\/style>/gi, " ")
 		.replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
-		.replace(/<template[\s\S]*?<\/template>/gi, " ")
-		.replace(/<br\s*\/?>/gi, "\n")
-		.replace(/<\/(p|div|section|article|li|ul|ol|h1|h2|h3|h4|h5|h6|main|header|footer)>/gi, "\n")
-		.replace(/<[^>]+>/g, " ");
-	return decodeHtmlEntities(stripped)
+		.replace(/<template[\s\S]*?<\/template>/gi, " ");
+}
+
+function normalizeWhitespace(text: string): string {
+	return decodeHtmlEntities(text)
 		.replace(/\r/g, "")
 		.replace(/\t/g, " ")
 		.replace(/[ ]{2,}/g, " ")
@@ -96,10 +96,59 @@ function htmlToText(html: string): string {
 		.trim();
 }
 
+function htmlToText(html: string): string {
+	const stripped = stripHtml(html)
+		.replace(/<br\s*\/?>/gi, "\n")
+		.replace(/<\/(p|div|section|article|li|ul|ol|h1|h2|h3|h4|h5|h6|main|header|footer)>/gi, "\n")
+		.replace(/<[^>]+>/g, " ");
+	return normalizeWhitespace(stripped);
+}
+
+function htmlToMarkdown(html: string): string {
+	const withoutUnsafe = stripHtml(html)
+		.replace(/<a [^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_match, href: string, text: string) => {
+			const label = normalizeWhitespace(text.replace(/<[^>]+>/g, " ")) || href;
+			return `[${label}](${href})`;
+		})
+		.replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, "\n# $1\n")
+		.replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, "\n## $1\n")
+		.replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, "\n### $1\n")
+		.replace(/<h4[^>]*>([\s\S]*?)<\/h4>/gi, "\n#### $1\n")
+		.replace(/<h5[^>]*>([\s\S]*?)<\/h5>/gi, "\n##### $1\n")
+		.replace(/<h6[^>]*>([\s\S]*?)<\/h6>/gi, "\n###### $1\n")
+		.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, "\n- $1")
+		.replace(/<br\s*\/?>/gi, "\n")
+		.replace(/<\/(p|div|section|article|ul|ol|main|header|footer)>/gi, "\n\n")
+		.replace(/<(strong|b)[^>]*>([\s\S]*?)<\/(strong|b)>/gi, "**$2**")
+		.replace(/<(em|i)[^>]*>([\s\S]*?)<\/(em|i)>/gi, "*$2*")
+		.replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, "`$1`")
+		.replace(/<pre[^>]*>([\s\S]*?)<\/pre>/gi, "\n```\n$1\n```\n")
+		.replace(/<[^>]+>/g, " ");
+	return normalizeWhitespace(withoutUnsafe);
+}
+
 function buildPreview(text: string, maxChars = 4000): string {
 	const trimmed = text.trim();
 	if (!trimmed) return "(no preview text)";
 	return trimmed.length <= maxChars ? trimmed : `${trimmed.slice(0, maxChars).trimEnd()}\n\n[Preview truncated]`;
+}
+
+function buildAcceptHeader(format: WebContentFormat): string {
+	switch (format) {
+		case "html":
+			return "text/html;q=1.0, application/xhtml+xml;q=0.9, text/plain;q=0.7, application/json;q=0.5, */*;q=0.1";
+		case "text":
+			return "text/plain;q=1.0, text/markdown;q=0.9, text/html;q=0.8, application/json;q=0.6, */*;q=0.1";
+		case "markdown":
+		default:
+			return "text/markdown;q=1.0, text/x-markdown;q=0.9, text/plain;q=0.8, text/html;q=0.7, application/json;q=0.6, */*;q=0.1";
+	}
+}
+
+function renderPreviewSource(rawText: string, contentType: string, format: WebContentFormat): string {
+	if (format === "html") return rawText;
+	if (!isHtmlContentType(contentType)) return rawText;
+	return format === "markdown" ? htmlToMarkdown(rawText) : htmlToText(rawText);
 }
 
 function buildProvenance(reference: MaterializedWebContent) {
@@ -119,23 +168,30 @@ function buildProvenance(reference: MaterializedWebContent) {
 		provenancePath: reference.provenancePath,
 		relativeProvenancePath: reference.relativeProvenancePath,
 		title: reference.title,
+		requestedFormat: reference.requestedFormat,
 		constraints: {
 			maxBytes: MAX_BYTES,
 			fetchTimeoutMs: FETCH_TIMEOUT_MS,
-			mode: "https-text-first",
+			mode: "https-materialized-web-fetch",
 		},
 	};
 }
 
-export async function materializeWebContent(url: string, cwd: string, signal?: AbortSignal): Promise<MaterializedWebContent> {
+export async function materializeWebContent(
+	url: string,
+	cwd: string,
+	options?: { format?: WebContentFormat; signal?: AbortSignal },
+): Promise<MaterializedWebContent> {
+	const format = options?.format ?? "markdown";
+	const signal = options?.signal;
 	const { normalizedUrl, sourceKind } = normalizeWebUrl(url);
 	const { controller, cleanup } = createFetchController(signal);
 	try {
 		const response = await fetch(normalizedUrl, {
 			signal: controller.signal,
 			headers: {
-				"User-Agent": "pi-helmsman-web-content/0.1",
-				Accept: "text/html, text/plain, text/markdown, text/*, application/json;q=0.9, application/xml;q=0.8, */*;q=0.1",
+				"User-Agent": "pi-helmsman-web-content/0.2",
+				Accept: buildAcceptHeader(format),
 			},
 		});
 		if (!response.ok) {
@@ -150,8 +206,7 @@ export async function materializeWebContent(url: string, cwd: string, signal?: A
 			throw new Error(`Fetched content exceeds ${MAX_BYTES} byte limit after download (${buffer.byteLength} bytes)`);
 		}
 		const rawText = buffer.toString("utf8");
-		const previewSource = isHtmlContentType(contentType) ? htmlToText(rawText) : rawText;
-		const previewText = buildPreview(previewSource);
+		const previewText = buildPreview(renderPreviewSource(rawText, contentType, format));
 		const title = isHtmlContentType(contentType) ? extractHtmlTitle(rawText) : undefined;
 		const paths = buildReferencePaths(cwd, normalizedUrl, contentType);
 		await mkdir(paths.dir, { recursive: true });
@@ -170,6 +225,7 @@ export async function materializeWebContent(url: string, cwd: string, signal?: A
 			sha256: createHash("sha256").update(buffer).digest("hex"),
 			fetchedAt: new Date().toISOString(),
 			policyVersion: POLICY_VERSION,
+			requestedFormat: format,
 			title,
 			previewText,
 		};
@@ -186,6 +242,7 @@ export function formatSummary(reference: MaterializedWebContent): string {
 	return [
 		`Fetched web content: ${reference.normalizedUrl}`,
 		reference.title ? `Title: ${reference.title}` : undefined,
+		`Requested format: ${reference.requestedFormat}`,
 		`Policy version: ${reference.policyVersion}`,
 		`Local file: ${reference.relativeBodyPath}`,
 		`Provenance: ${reference.relativeProvenancePath}`,

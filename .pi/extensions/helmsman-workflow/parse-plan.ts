@@ -1,11 +1,52 @@
 import type { ParsedWorkflowPlanResult, WorkflowApprovalState, WorkflowPlanPhase } from "./types";
 import { buildReadOnlyExplorationCommands } from "./planner";
 
+function unwrapMarkdownFormatting(value: string): string {
+	let result = value.trim();
+	for (const pattern of [/^\*\*(.+?)\*\*$/, /^_(.+)_$/, /^\*(.+)\*$/]) {
+		const match = result.match(pattern);
+		if (match) {
+			result = match[1].trim();
+		}
+	}
+	return result;
+}
+
+function normalizeSectionHeaderLine(line: string): string {
+	return unwrapMarkdownFormatting(line.trim().replace(/\s{2,}$/g, ""));
+}
+
+function isSectionHeader(line: string, label: string): { matches: boolean; inlineValue: string | null } {
+	const normalized = normalizeSectionHeaderLine(line);
+	if (!normalized) return { matches: false, inlineValue: null };
+	if (normalized.toLowerCase() === label.toLowerCase()) {
+		return { matches: true, inlineValue: null };
+	}
+	const prefix = `${label}:`;
+	if (normalized.toLowerCase().startsWith(prefix.toLowerCase())) {
+		return { matches: true, inlineValue: normalized.slice(prefix.length).trim() || null };
+	}
+	return { matches: false, inlineValue: null };
+}
+
 function extractSection(text: string, label: string, stopLabels: string[]): { present: boolean; value: string | null } {
-	const escapedStops = stopLabels.map((item) => item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
-	const pattern = new RegExp(`${label}:\\s*([\\s\\S]*?)(?=\\n(?:${escapedStops}):|$)`, "i");
-	const match = text.match(pattern);
-	return { present: Boolean(match), value: match?.[1]?.trim() || null };
+	const lines = text.split("\n");
+	const startIndex = lines.findIndex((line) => isSectionHeader(line, label).matches);
+	if (startIndex === -1) return { present: false, value: null };
+
+	const startMatch = isSectionHeader(lines[startIndex] ?? "", label);
+	const collected: string[] = [];
+	if (startMatch.inlineValue) collected.push(startMatch.inlineValue);
+
+	for (let index = startIndex + 1; index < lines.length; index += 1) {
+		const line = lines[index] ?? "";
+		const hitsStop = stopLabels.some((stopLabel) => stopLabel !== label && isSectionHeader(line, stopLabel).matches);
+		if (hitsStop) break;
+		collected.push(line);
+	}
+
+	const value = collected.join("\n").trim();
+	return { present: true, value: value || null };
 }
 
 function parseBulletList(section: string | null): string[] {
@@ -15,6 +56,7 @@ function parseBulletList(section: string | null): string[] {
 		.map((line) => line.trim())
 		.filter((line) => line.startsWith("- "))
 		.map((line) => line.slice(2).trim())
+		.map((line) => line.replace(/^`(.+)`$/, "$1"))
 		.filter(Boolean);
 }
 
@@ -26,7 +68,9 @@ function parsePhases(planSection: string | null): WorkflowPlanPhase[] {
 
 	for (const rawLine of lines) {
 		const line = rawLine.trim();
-		const phaseMatch = line.match(/^Phase\s+\d+:\s*(.+)$/i);
+		const withoutListPrefix = line.replace(/^\d+\.\s+/, "");
+		const normalized = unwrapMarkdownFormatting(withoutListPrefix.replace(/\s{2,}$/g, ""));
+		const phaseMatch = normalized.match(/^Phase\s+\d+\s*(?::|[-–])\s*(.+?)(?:\s*\(\d+\s+steps\))?$/i);
 		if (phaseMatch) {
 			current = { name: phaseMatch[1].trim(), steps: [] };
 			phases.push(current);
@@ -34,7 +78,7 @@ function parsePhases(planSection: string | null): WorkflowPlanPhase[] {
 		}
 		const stepMatch = line.match(/^\d+\.\s+(.+)$/);
 		if (stepMatch && current) {
-			current.steps.push(stepMatch[1].trim());
+			current.steps.push(unwrapMarkdownFormatting(stepMatch[1]).trim());
 		}
 	}
 
@@ -43,29 +87,33 @@ function parsePhases(planSection: string | null): WorkflowPlanPhase[] {
 
 export function parseWorkflowPlanFromText(text: string): ParsedWorkflowPlanResult | null {
 	const stopLabels = ["Goal", "Constraints", "Assumptions", "Target Files", "Current Phase", "Current Step", "Verification Notes", "Approval State", "Plan"];
-	const goalMatch = text.match(/Goal:\s*(.+)/i);
-	const approvalMatch = text.match(/Approval State:\s*(draft|approved)/i);
-	const currentPhaseMatch = text.match(/Current Phase:\s*(\d+)/i);
-	const currentStepMatch = text.match(/Current Step:\s*(\d+)/i);
+	const goalSection = extractSection(text, "Goal", stopLabels);
 	const constraintsSection = extractSection(text, "Constraints", stopLabels);
 	const assumptionsSection = extractSection(text, "Assumptions", stopLabels);
 	const targetFilesSection = extractSection(text, "Target Files", stopLabels);
+	const currentPhaseSection = extractSection(text, "Current Phase", stopLabels);
+	const currentStepSection = extractSection(text, "Current Step", stopLabels);
 	const verificationSection = extractSection(text, "Verification Notes", stopLabels);
+	const approvalSection = extractSection(text, "Approval State", stopLabels);
 	const planSection = extractSection(text, "Plan", stopLabels);
 	const constraints = parseBulletList(constraintsSection.value);
 	const assumptions = parseBulletList(assumptionsSection.value);
 	const targetFiles = parseBulletList(targetFilesSection.value);
 	const verificationNotes = parseBulletList(verificationSection.value);
 	const phases = parsePhases(planSection.value);
+	const goal = goalSection.value?.split("\n")[0]?.trim() ?? "";
+	const currentPhaseMatch = currentPhaseSection.value?.match(/(?:Phase\s+)?(\d+)/i);
+	const currentStepMatch = currentStepSection.value?.match(/(\d+)/i);
+	const approvalMatch = approvalSection.value?.match(/\b(draft|approved)\b/i);
 
-	if (!goalMatch && phases.length === 0) return null;
+	if (!goalSection.present && phases.length === 0) return null;
 
-		const present = {
-		goal: Boolean(goalMatch),
-		currentPhase: Boolean(currentPhaseMatch),
-		currentStep: Boolean(currentStepMatch),
+	const present = {
+		goal: goalSection.present,
+		currentPhase: currentPhaseSection.present,
+		currentStep: currentStepSection.present,
 		targetFiles: targetFilesSection.present,
-		approvalState: Boolean(approvalMatch),
+		approvalState: approvalSection.present,
 		constraints: constraintsSection.present,
 		assumptions: assumptionsSection.present,
 		verificationNotes: verificationSection.present,
@@ -74,7 +122,7 @@ export function parseWorkflowPlanFromText(text: string): ParsedWorkflowPlanResul
 
 	return {
 		plan: {
-			goal: goalMatch?.[1]?.trim() ?? "",
+			goal,
 			currentPhase: currentPhaseMatch ? Number(currentPhaseMatch[1]) : phases.length > 0 ? 1 : null,
 			currentStep: currentStepMatch ? Number(currentStepMatch[1]) : phases[0]?.steps.length ? 1 : null,
 			targetFiles,

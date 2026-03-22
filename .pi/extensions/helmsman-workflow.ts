@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { buildClarifiedGoal, getClarificationQuestion, shouldClarifyGoal } from "./helmsman-workflow/clarify.js";
+import { normalizeRequestedPlanGoal, shouldPromptForPlanGoal } from "./helmsman-workflow/command-goal.js";
 import {
 	createDefaultWorkflowState,
 	formatWorkflowStatus,
@@ -101,7 +102,11 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 		description: "Enter plan mode and seed a draft planning scaffold from the provided goal",
 		handler: async (args, ctx) => {
 			workflowState = updateWorkflowMode(workflowState, "plan");
-			const resolvedGoal = args.trim() ? await resolvePlanGoal(args, ctx) : workflowState.plan.goal;
+			let requestedGoal = normalizeRequestedPlanGoal(args, workflowState.plan.goal);
+			if (ctx.hasUI && shouldPromptForPlanGoal(args, workflowState.plan.goal)) {
+				requestedGoal = (await ctx.ui.input("Helmsman planning goal", "What should this plan accomplish?"))?.trim() ?? "";
+			}
+			const resolvedGoal = requestedGoal ? await resolvePlanGoal(requestedGoal, ctx) : workflowState.plan.goal;
 			workflowState = resolvedGoal
 				? updateWorkflowPlanScaffold(workflowState, resolvedGoal)
 				: updateWorkflowPlanGoal(workflowState, workflowState.plan.goal);
@@ -155,7 +160,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand(STATUS_COMMAND, {
-		description: "Show current Helmsman workflow mode and placeholder plan scaffold",
+		description: "Show current Helmsman workflow mode and draft plan scaffold",
 		handler: async (_args, ctx) => {
 			updateFooterStatus(ctx, workflowState);
 			ctx.ui.notify(`Workflow mode: ${workflowState.mode}`, "info");

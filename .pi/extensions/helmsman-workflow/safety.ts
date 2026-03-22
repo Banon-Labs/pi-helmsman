@@ -1,3 +1,4 @@
+import type { WorkflowMode } from "./types";
 import { isReadOnlyBashCommand } from "../helmsman-context/heuristics.js";
 
 export interface WorkflowSafetyPrompt {
@@ -5,6 +6,11 @@ export interface WorkflowSafetyPrompt {
 	title: string;
 	message: string;
 	reason: string;
+}
+
+export interface WorkflowBashSafetyOptions {
+	mode?: WorkflowMode;
+	targetFiles?: string[];
 }
 
 function normalizeRepoPath(path: string): string {
@@ -30,6 +36,28 @@ const DESTRUCTIVE_BASH_PATTERNS = [
 	/\bmv\b/i,
 ];
 
+interface SimpleMoveOperation {
+	source: string;
+	target: string;
+}
+
+function tokenizeCommand(command: string): string[] {
+	return command
+		.trim()
+		.split(/\s+/)
+		.map((part) => part.trim())
+		.filter(Boolean);
+}
+
+function parseSimpleMoveOperation(command: string): SimpleMoveOperation | undefined {
+	const tokens = tokenizeCommand(command);
+	if (tokens.length !== 3 || tokens[0] !== "mv") return undefined;
+	const [, source, target] = tokens;
+	if (!source || !target) return undefined;
+	if (source.startsWith("-") || target.startsWith("-")) return undefined;
+	return { source, target };
+}
+
 export function isProtectedPath(path: string): boolean {
 	const normalized = path.trim().replace(/\\/g, "/");
 	if (!normalized) return false;
@@ -46,7 +74,28 @@ export function getProtectedPathPrompt(path: string): WorkflowSafetyPrompt | und
 	};
 }
 
-export function getBashSafetyPrompt(command: string): WorkflowSafetyPrompt | undefined {
+export function isPathCoveredByTargets(path: string, targetFiles: string[]): boolean {
+	const normalizedPath = normalizeRepoPath(path);
+	if (!normalizedPath) return true;
+	if (targetFiles.length === 0) return true;
+
+	return targetFiles
+		.map((target) => normalizeRepoPath(target))
+		.filter(Boolean)
+		.some((target) => normalizedPath === target || normalizedPath.endsWith(`/${target}`) || target.endsWith(`/${normalizedPath}`));
+}
+
+function isLowRiskBuildMove(command: string, options?: WorkflowBashSafetyOptions): boolean {
+	if (options?.mode !== "build") return false;
+	const move = parseSimpleMoveOperation(command);
+	if (!move) return false;
+	if (isProtectedPath(move.source) || isProtectedPath(move.target)) return false;
+	const targetFiles = options?.targetFiles ?? [];
+	if (targetFiles.length === 0) return false;
+	return isPathCoveredByTargets(move.source, targetFiles) && isPathCoveredByTargets(move.target, targetFiles);
+}
+
+export function getBashSafetyPrompt(command: string, options?: WorkflowBashSafetyOptions): WorkflowSafetyPrompt | undefined {
 	const trimmed = command.trim();
 	if (!trimmed) return undefined;
 	if (FILE_DELETE_PATTERNS.some((pattern) => pattern.test(trimmed))) {
@@ -66,6 +115,7 @@ export function getBashSafetyPrompt(command: string): WorkflowSafetyPrompt | und
 		};
 	}
 	if (DESTRUCTIVE_BASH_PATTERNS.some((pattern) => pattern.test(trimmed))) {
+		if (isLowRiskBuildMove(trimmed, options)) return undefined;
 		return {
 			kind: "destructive-bash",
 			title: "Confirm destructive bash command",
@@ -79,17 +129,6 @@ export function getBashSafetyPrompt(command: string): WorkflowSafetyPrompt | und
 export function getPlanModeBashBlockReason(command: string): string | undefined {
 	if (isReadOnlyBashCommand(command)) return undefined;
 	return "Plan mode only allows read-only bash exploration. Switch to /mode build and use an approved plan before running mutating shell commands.";
-}
-
-export function isPathCoveredByTargets(path: string, targetFiles: string[]): boolean {
-	const normalizedPath = normalizeRepoPath(path);
-	if (!normalizedPath) return true;
-	if (targetFiles.length === 0) return true;
-
-	return targetFiles
-		.map((target) => normalizeRepoPath(target))
-		.filter(Boolean)
-		.some((target) => normalizedPath === target || normalizedPath.endsWith(`/${target}`) || target.endsWith(`/${normalizedPath}`));
 }
 
 export function getUnexpectedFileSpreadReason(path: string, targetFiles: string[]): string | undefined {

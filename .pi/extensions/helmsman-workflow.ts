@@ -11,7 +11,9 @@ import { renderWorkflowPlanDraft } from "./helmsman-workflow/draft.js";
 import {
 	advanceWorkflowPlanForRun,
 	advanceWorkflowPlanForStep,
+	buildVerificationFailureNote,
 	getExecutionBlockReason,
+	getVerificationFailureReason,
 	shouldReplanAfterExecutionBlock,
 } from "./helmsman-workflow/execution.js";
 import { parseWorkflowPlanFromText } from "./helmsman-workflow/parse-plan.js";
@@ -176,7 +178,10 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 				speakWorkflowMilestone("safety-block", ttsBackend);
 				return { block: true, reason: planModeBlockReason };
 			}
-			const bashPrompt = getBashSafetyPrompt(command);
+			const bashPrompt = getBashSafetyPrompt(command, {
+				mode: workflowState.mode,
+				targetFiles: workflowState.plan.targetFiles,
+			});
 			if (bashPrompt) return confirmOrBlock(ctx, bashPrompt, ttsBackend);
 		}
 
@@ -215,7 +220,10 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 			};
 		}
 
-		const bashPrompt = getBashSafetyPrompt(event.command);
+		const bashPrompt = getBashSafetyPrompt(event.command, {
+			mode: workflowState.mode,
+			targetFiles: workflowState.plan.targetFiles,
+		});
 		if (!bashPrompt) return;
 		if (!ctx.hasUI) {
 			speakWorkflowMilestone("safety-block", ttsBackend);
@@ -239,6 +247,29 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 				truncated: false,
 			},
 		};
+	});
+
+	pi.on("tool_result", async (event, ctx) => {
+		if (event.toolName !== "bash" || !event.isError) return;
+		if (workflowState.mode !== "build" || workflowState.plan.approvalState !== "approved") return;
+		const command = String(event.input.command ?? "");
+		const verificationFailureReason = getVerificationFailureReason(command);
+		if (!verificationFailureReason) return;
+		const verificationNote = buildVerificationFailureNote(command);
+		workflowState = {
+			...updateWorkflowApprovalState(updateWorkflowMode(workflowState, "plan"), "draft"),
+			plan: {
+				...workflowState.plan,
+				approvalState: "draft",
+				verificationNotes: [...workflowState.plan.verificationNotes, verificationNote],
+			},
+		};
+		persistState(pi, workflowState);
+		syncActiveTools(pi, workflowState.mode);
+		updateFooterStatus(ctx, workflowState);
+		ctx.ui.notify(verificationFailureReason, "warning");
+		speakWorkflowMilestone("safety-block", ttsBackend);
+		publishStatus(pi, workflowState, Boolean(ctx.model));
 	});
 
 	pi.on("agent_end", async (event, ctx) => {

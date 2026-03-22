@@ -54,6 +54,34 @@ describe("getBashSafetyPrompt", () => {
 		expect(prompt?.reason).toContain("Destructive bash");
 	});
 
+	test("allows low-risk repo-local mv in build mode when it stays within target scope", () => {
+		expect(
+			getBashSafetyPrompt("mv src/old.ts src/new.ts", {
+				mode: "build",
+				targetFiles: ["src/old.ts", "src/new.ts"],
+			}),
+		).toBeUndefined();
+	});
+
+	test("still prompts for mv when it touches protected or out-of-scope paths", () => {
+		const protectedMove = getBashSafetyPrompt("mv src/index.ts .git/index", {
+			mode: "build",
+			targetFiles: ["src/index.ts"],
+		});
+		const outOfScopeMove = getBashSafetyPrompt("mv src/index.ts scripts/index.ts", {
+			mode: "build",
+			targetFiles: ["src/index.ts"],
+		});
+		const unscopedMove = getBashSafetyPrompt("mv src/index.ts src/renamed.ts", {
+			mode: "build",
+			targetFiles: [],
+		});
+
+		expect(protectedMove?.kind).toBe("destructive-bash");
+		expect(outOfScopeMove?.kind).toBe("destructive-bash");
+		expect(unscopedMove?.kind).toBe("destructive-bash");
+	});
+
 	test("ignores read-only commands", () => {
 		expect(getBashSafetyPrompt("git status --short --branch")).toBeUndefined();
 		expect(getBashSafetyPrompt("rg helmsman . -n")).toBeUndefined();

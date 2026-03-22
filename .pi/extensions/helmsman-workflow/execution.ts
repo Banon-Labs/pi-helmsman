@@ -7,6 +7,38 @@ export interface WorkflowExecutionResult {
 	summary: string;
 }
 
+const VERIFICATION_COMMAND_PATTERNS = [
+	/^bun\s+(?:test|x\s+(?:vitest|jest|tsx|tsc)\b)/i,
+	/^npm\s+run\s+(?:test|lint|check|build|typecheck)\b/i,
+	/^npm\s+(?:test|run-script\s+(?:test|lint|check|build|typecheck))\b/i,
+	/^pnpm\s+(?:test|lint|check|build|typecheck|exec\s+(?:vitest|jest|tsc))\b/i,
+	/^yarn\s+(?:test|lint|check|build|typecheck|vitest|jest|tsc)\b/i,
+	/^(?:npx|pnpm\s+dlx)\s+(?:vitest|jest|tsc|eslint|prettier)\b/i,
+	/^(?:vitest|jest|mocha|ava|pytest|ruff|mypy|tox|nox)\b/i,
+	/^cargo\s+(?:test|check|clippy|build)\b/i,
+	/^go\s+(?:test|vet|build)\b/i,
+	/^deno\s+(?:test|check|task\s+(?:test|lint|build))\b/i,
+	/^uv\s+run\s+(?:pytest|ruff|mypy)\b/i,
+	/^python(?:3)?\s+-m\s+(?:pytest|unittest)\b/i,
+	/^tsc\b/i,
+	/^(?:make|just)\s+(?:test|check|lint|build)\b/i,
+];
+
+export function isVerificationCommand(command: string): boolean {
+	const trimmed = command.trim();
+	if (!trimmed) return false;
+	return VERIFICATION_COMMAND_PATTERNS.some((pattern) => pattern.test(trimmed));
+}
+
+export function getVerificationFailureReason(command: string): string | undefined {
+	if (!isVerificationCommand(command)) return undefined;
+	return `Verification command failed: ${command.trim()}. Returning to plan mode so Helmsman can re-evaluate before continuing.`;
+}
+
+export function buildVerificationFailureNote(command: string): string {
+	return `Verification failed: ${command.trim()}`;
+}
+
 export function getExecutionBlockReason(
 	plan: WorkflowPlanState,
 	scope: WorkflowExecutionScope,

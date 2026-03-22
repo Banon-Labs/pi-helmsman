@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import {
 	advanceWorkflowPlanForRun,
 	advanceWorkflowPlanForStep,
+	buildVerificationFailureNote,
 	getExecutionBlockReason,
+	getVerificationFailureReason,
+	isVerificationCommand,
 	shouldReplanAfterExecutionBlock,
 } from "./execution";
 import type { WorkflowPlanState } from "./types";
@@ -53,6 +56,36 @@ describe("shouldReplanAfterExecutionBlock", () => {
 	test("requests replanning when an approved plan lacks executable structure", () => {
 		expect(shouldReplanAfterExecutionBlock(buildApprovedPlan({ phases: [] }), "run")).toBe(true);
 		expect(shouldReplanAfterExecutionBlock(buildApprovedPlan({ currentStep: null }), "step")).toBe(true);
+	});
+});
+
+describe("verification failure detection", () => {
+	test("recognizes common verification commands", () => {
+		expect(isVerificationCommand("bun test ./.pi/extensions/helmsman-workflow/*.test.ts")).toBe(true);
+		expect(isVerificationCommand("npm run lint")).toBe(true);
+		expect(isVerificationCommand("cargo test")).toBe(true);
+		expect(isVerificationCommand("pytest -q")).toBe(true);
+	});
+
+	test("ignores non-verification commands", () => {
+		expect(isVerificationCommand("git status --short --branch")).toBe(false);
+		expect(isVerificationCommand("node scripts/rewrite.js")).toBe(false);
+	});
+
+	test("returns a verification-failure reason for failed verification commands", () => {
+		expect(getVerificationFailureReason("bun test ./.pi/extensions/helmsman-workflow/*.test.ts")).toContain(
+			"Verification command failed",
+		);
+	});
+
+	test("does not treat non-verification failures as automatic replanning triggers", () => {
+		expect(getVerificationFailureReason("node scripts/rewrite.js")).toBeUndefined();
+	});
+
+	test("builds a concise persisted verification failure note", () => {
+		expect(buildVerificationFailureNote("bun test ./.pi/extensions/helmsman-workflow/*.test.ts")).toBe(
+			"Verification failed: bun test ./.pi/extensions/helmsman-workflow/*.test.ts",
+		);
 	});
 });
 

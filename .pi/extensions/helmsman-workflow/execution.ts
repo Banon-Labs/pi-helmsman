@@ -27,6 +27,13 @@ export function getExecutionBlockReason(
 	return undefined;
 }
 
+export function shouldReplanAfterExecutionBlock(
+	plan: WorkflowPlanState,
+	scope: WorkflowExecutionScope,
+): boolean {
+	return Boolean(getExecutionBlockReason(plan, scope)) && plan.approvalState === "approved";
+}
+
 export function advanceWorkflowPlanForStep(plan: WorkflowPlanState): WorkflowExecutionResult {
 	const phaseIndex = Math.max((plan.currentPhase ?? 1) - 1, 0);
 	const stepIndex = Math.max((plan.currentStep ?? 1) - 1, 0);

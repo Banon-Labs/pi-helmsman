@@ -3,6 +3,7 @@ import {
 	advanceWorkflowPlanForRun,
 	advanceWorkflowPlanForStep,
 	getExecutionBlockReason,
+	shouldReplanAfterExecutionBlock,
 } from "./execution";
 import type { WorkflowPlanState } from "./types";
 
@@ -41,6 +42,17 @@ describe("getExecutionBlockReason", () => {
 	test("allows execution when the plan is approved and phased", () => {
 		expect(getExecutionBlockReason(buildApprovedPlan(), "step")).toBeUndefined();
 		expect(getExecutionBlockReason(buildApprovedPlan(), "run")).toBeUndefined();
+	});
+});
+
+describe("shouldReplanAfterExecutionBlock", () => {
+	test("does not request replanning when approval is the only blocker", () => {
+		expect(shouldReplanAfterExecutionBlock(buildApprovedPlan({ approvalState: "draft" }), "step")).toBe(false);
+	});
+
+	test("requests replanning when an approved plan lacks executable structure", () => {
+		expect(shouldReplanAfterExecutionBlock(buildApprovedPlan({ phases: [] }), "run")).toBe(true);
+		expect(shouldReplanAfterExecutionBlock(buildApprovedPlan({ currentStep: null }), "step")).toBe(true);
 	});
 });
 

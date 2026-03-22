@@ -8,6 +8,7 @@ import {
 	advanceWorkflowPlanForRun,
 	advanceWorkflowPlanForStep,
 	getExecutionBlockReason,
+	shouldReplanAfterExecutionBlock,
 } from "./helmsman-workflow/execution.js";
 import { parseWorkflowPlanFromText } from "./helmsman-workflow/parse-plan.js";
 import { describePlannerRuntime } from "./helmsman-workflow/runtime.js";
@@ -202,6 +203,15 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 		handler: async (_args, ctx) => {
 			const blockedReason = getExecutionBlockReason(workflowState.plan, "step");
 			if (blockedReason) {
+				if (shouldReplanAfterExecutionBlock(workflowState.plan, "step")) {
+					workflowState = updateWorkflowApprovalState(updateWorkflowMode(workflowState, "plan"), "draft");
+					persistState(pi, workflowState);
+					syncActiveTools(pi, workflowState.mode);
+					updateFooterStatus(ctx, workflowState);
+					ctx.ui.notify(`${blockedReason} Returning to plan mode for replanning.`, "warning");
+					publishStatus(pi, workflowState, Boolean(ctx.model));
+					return;
+				}
 				ctx.ui.notify(blockedReason, "warning");
 				publishStatus(pi, workflowState, Boolean(ctx.model));
 				return;
@@ -226,6 +236,15 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 		handler: async (_args, ctx) => {
 			const blockedReason = getExecutionBlockReason(workflowState.plan, "run");
 			if (blockedReason) {
+				if (shouldReplanAfterExecutionBlock(workflowState.plan, "run")) {
+					workflowState = updateWorkflowApprovalState(updateWorkflowMode(workflowState, "plan"), "draft");
+					persistState(pi, workflowState);
+					syncActiveTools(pi, workflowState.mode);
+					updateFooterStatus(ctx, workflowState);
+					ctx.ui.notify(`${blockedReason} Returning to plan mode for replanning.`, "warning");
+					publishStatus(pi, workflowState, Boolean(ctx.model));
+					return;
+				}
 				ctx.ui.notify(blockedReason, "warning");
 				publishStatus(pi, workflowState, Boolean(ctx.model));
 				return;

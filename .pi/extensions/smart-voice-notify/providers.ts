@@ -19,9 +19,14 @@ export function detectAvailableVoiceProviders(pathEnv = process.env.PATH ?? ""):
 export function resolveVoiceProvider(
 	availableProviders: VoiceProvider[],
 	preferredProvider?: VoiceProvider,
+	platform = process.platform,
 ): VoiceProvider | undefined {
 	if (preferredProvider && availableProviders.includes(preferredProvider)) return preferredProvider;
-	return availableProviders[0];
+	const priority =
+		platform === "linux"
+			? (["spd-say", "espeak-ng", "say"] as const)
+			: (["say", "espeak-ng", "spd-say"] as const);
+	return priority.find((provider) => availableProviders.includes(provider));
 }
 
 export function buildVoiceProviderArgs(provider: VoiceProvider, message: string): string[] {
@@ -29,8 +34,8 @@ export function buildVoiceProviderArgs(provider: VoiceProvider, message: string)
 		case "say":
 			return [message];
 		case "espeak-ng":
-			return [message];
+			return ["-s", "155", message];
 		case "spd-say":
-			return [message];
+			return ["-r", "-20", message];
 	}
 }

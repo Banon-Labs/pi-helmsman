@@ -23,15 +23,16 @@ describe("resolveVoiceProvider", () => {
 		expect(resolveVoiceProvider(["say", "spd-say"], "spd-say")).toBe("spd-say");
 	});
 
-	test("falls back to the first available provider", () => {
-		expect(resolveVoiceProvider(["say", "spd-say"], "espeak-ng")).toBe("say");
+	test("uses platform-aware fallback priority", () => {
+		expect(resolveVoiceProvider(["say", "spd-say"], "espeak-ng", "linux")).toBe("spd-say");
+		expect(resolveVoiceProvider(["say", "spd-say"], "espeak-ng", "darwin")).toBe("say");
 	});
 });
 
 describe("buildVoiceProviderArgs", () => {
-	test("passes message text directly to supported providers", () => {
+	test("uses provider-specific speech args", () => {
 		expect(buildVoiceProviderArgs("say", "hello")).toEqual(["hello"]);
-		expect(buildVoiceProviderArgs("espeak-ng", "hello")).toEqual(["hello"]);
-		expect(buildVoiceProviderArgs("spd-say", "hello")).toEqual(["hello"]);
+		expect(buildVoiceProviderArgs("espeak-ng", "hello")).toEqual(["-s", "155", "hello"]);
+		expect(buildVoiceProviderArgs("spd-say", "hello")).toEqual(["-r", "-20", "hello"]);
 	});
 });

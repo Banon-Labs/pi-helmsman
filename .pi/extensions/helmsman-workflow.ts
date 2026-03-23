@@ -12,7 +12,7 @@ import {
 import { normalizeRequestedPlanGoal, shouldPromptForPlanGoal } from "./helmsman-workflow/command-goal.js";
 import { resolveForcedChoiceSelection, type ForcedChoiceResult } from "./helmsman-workflow/choices.js";
 import { buildWorkflowHandoffPrompt, buildWorkflowHandoffSessionName } from "./helmsman-workflow/handoff.js";
-import { renderWorkflowPlanDraft } from "./helmsman-workflow/draft.js";
+import { renderWorkflowPlanDraft, resolveWorkflowPlanDocumentText } from "./helmsman-workflow/draft.js";
 import {
 	buildApprovalRequiredNotice,
 	buildCollaborativeReplanNotice,
@@ -49,6 +49,7 @@ import {
 	parsePreHandoffReview,
 	resetWorkflowStateForFreshPlanning,
 	restoreWorkflowState,
+	updateWorkflowGeneratedPlanText,
 	sanitizeWorkflowPlanState,
 	shouldRunPreHandoffReview,
 	updateWorkflowApprovalState,
@@ -94,6 +95,7 @@ function persistState(pi: ExtensionAPI, state: WorkflowState): void {
 	pi.appendEntry(WORKFLOW_STATE_CUSTOM_TYPE, {
 		mode: state.mode,
 		plan: state.plan,
+		generatedPlanText: state.generatedPlanText,
 	});
 }
 
@@ -143,11 +145,11 @@ async function selectWithOptionalOther(
 	return result;
 }
 
-function showWorkflowPlanDraft(pi: ExtensionAPI, plan: WorkflowState["plan"]): void {
+function showWorkflowPlanDraft(pi: ExtensionAPI, state: WorkflowState): void {
 	pi.sendMessage({
 		customType: `${CUSTOM_MESSAGE_TYPE}-draft`,
-		content: renderWorkflowPlanDraft(plan),
-		details: plan,
+		content: resolveWorkflowPlanDocumentText(state),
+		details: state.plan,
 		display: true,
 	});
 }
@@ -405,7 +407,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 		}
 		if (workflowState.mode !== "plan") return { action: "continue" as const };
 		const resolvedGoal = await resolvePlanGoal(event.text, ctx);
-		workflowState = updateWorkflowPlanScaffold(workflowState, resolvedGoal);
+		workflowState = updateWorkflowGeneratedPlanText(updateWorkflowPlanScaffold(workflowState, resolvedGoal));
 		persistState(pi, workflowState);
 		if (resolvedGoal !== event.text.trim()) {
 			return { action: "transform" as const, text: resolvedGoal, images: event.images };
@@ -535,7 +537,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 			"What should Helmsman change before retrying verification?",
 		);
 		if (verificationChoice?.kind === "first" || verificationChoice?.kind === "second") {
-			showWorkflowPlanDraft(pi, workflowState.plan);
+			showWorkflowPlanDraft(pi, workflowState);
 		} else if (verificationChoice?.kind === "other" && verificationChoice.text) {
 			pi.sendUserMessage(verificationChoice.text);
 		}
@@ -547,16 +549,28 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 		const assistantText = getAssistantText(lastAssistant);
 
 		if (workflowState.mode === "plan") {
+			const persistedDraftState = updateWorkflowGeneratedPlanText(workflowState, assistantText);
 			const parsedPlan = parseWorkflowPlanFromText(assistantText);
+			workflowState = parsedPlan
+				? {
+					...persistedDraftState,
+					plan: mergeWorkflowPlanState(persistedDraftState.plan, parsedPlan),
+				}
+				: persistedDraftState;
+			persistState(pi, workflowState);
+			updateFooterStatus(ctx, workflowState);
 			if (!parsedPlan) return;
+			speakWorkflowMilestoneWithWarning(ctx, "plan-ready", ttsBackend);
+			return;
+		}
+
+		const parsedPlan = parseWorkflowPlanFromText(assistantText);
+		if (parsedPlan) {
 			workflowState = {
-				...workflowState,
+				...updateWorkflowGeneratedPlanText(workflowState, assistantText),
 				plan: mergeWorkflowPlanState(workflowState.plan, parsedPlan),
 			};
 			persistState(pi, workflowState);
-			updateFooterStatus(ctx, workflowState);
-			speakWorkflowMilestoneWithWarning(ctx, "plan-ready", ttsBackend);
-			return;
 		}
 
 		if (workflowState.mode !== "build" || !shouldRunPreHandoffReview(assistantText)) return;
@@ -614,9 +628,11 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 				requestedGoal = (await ctx.ui.input("Helmsman planning goal", "What should this plan accomplish?"))?.trim() ?? "";
 			}
 			const resolvedGoal = requestedGoal ? await resolvePlanGoal(requestedGoal, ctx) : workflowState.plan.goal;
-			workflowState = resolvedGoal
-				? updateWorkflowPlanScaffold(workflowState, resolvedGoal)
-				: updateWorkflowPlanGoal(workflowState, workflowState.plan.goal);
+			workflowState = updateWorkflowGeneratedPlanText(
+				resolvedGoal
+					? updateWorkflowPlanScaffold(workflowState, resolvedGoal)
+					: updateWorkflowPlanGoal(workflowState, workflowState.plan.goal),
+			);
 			persistState(pi, workflowState);
 			syncActiveTools(pi, workflowState.mode);
 			updateFooterStatus(ctx, workflowState);
@@ -635,8 +651,11 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 				return;
 			}
 
+			const persistedGeneratedPlanState = updateWorkflowGeneratedPlanText(workflowState, generatedPlan);
 			const parsedPlan = parseWorkflowPlanFromText(generatedPlan);
 			if (!parsedPlan) {
+				workflowState = persistedGeneratedPlanState;
+				persistState(pi, workflowState);
 				pi.sendMessage({
 					customType: `${CUSTOM_MESSAGE_TYPE}-planner-error`,
 					content: generatedPlan,
@@ -649,8 +668,8 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 			}
 
 			workflowState = {
-				...workflowState,
-				plan: sanitizeWorkflowPlanState(mergeWorkflowPlanState(workflowState.plan, parsedPlan)),
+				...persistedGeneratedPlanState,
+				plan: sanitizeWorkflowPlanState(mergeWorkflowPlanState(persistedGeneratedPlanState.plan, parsedPlan)),
 			};
 			persistState(pi, workflowState);
 			updateFooterStatus(ctx, workflowState);
@@ -668,7 +687,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 		description: "Show the providerless structured planner draft using the model-output contract",
 		handler: async (_args, ctx) => {
 			ctx.ui.notify("Showing structured planner draft.", "info");
-			showWorkflowPlanDraft(pi, workflowState.plan);
+			showWorkflowPlanDraft(pi, workflowState);
 		},
 	});
 
@@ -712,7 +731,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 						getCollaborativeReplanChoices(),
 						"How should the plan change before Helmsman continues?",
 					);
-					if (replanChoice?.kind === "first") showWorkflowPlanDraft(pi, workflowState.plan);
+					if (replanChoice?.kind === "first") showWorkflowPlanDraft(pi, workflowState);
 					else if (replanChoice?.kind === "other" && replanChoice.text) pi.sendUserMessage(replanChoice.text);
 					return;
 				}
@@ -739,7 +758,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 					syncActiveTools(pi, workflowState.mode);
 					updateFooterStatus(ctx, workflowState);
 					publishStatus(pi, workflowState, Boolean(ctx.model));
-					if (approvalChoice.kind === "second") showWorkflowPlanDraft(pi, workflowState.plan);
+					if (approvalChoice.kind === "second") showWorkflowPlanDraft(pi, workflowState);
 					else if (approvalChoice.text) pi.sendUserMessage(approvalChoice.text);
 					return;
 				}
@@ -780,7 +799,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 						getCollaborativeReplanChoices(),
 						"How should the plan change before Helmsman continues?",
 					);
-					if (replanChoice?.kind === "first") showWorkflowPlanDraft(pi, workflowState.plan);
+					if (replanChoice?.kind === "first") showWorkflowPlanDraft(pi, workflowState);
 					else if (replanChoice?.kind === "other" && replanChoice.text) pi.sendUserMessage(replanChoice.text);
 					return;
 				}
@@ -807,7 +826,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 					syncActiveTools(pi, workflowState.mode);
 					updateFooterStatus(ctx, workflowState);
 					publishStatus(pi, workflowState, Boolean(ctx.model));
-					if (approvalChoice.kind === "second") showWorkflowPlanDraft(pi, workflowState.plan);
+					if (approvalChoice.kind === "second") showWorkflowPlanDraft(pi, workflowState);
 					else if (approvalChoice.text) pi.sendUserMessage(approvalChoice.text);
 					return;
 				}
@@ -838,7 +857,10 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 				return;
 			}
 
-			workflowState = updateWorkflowApprovalState(workflowState, nextApproval);
+			const ensuredGeneratedPlanState = workflowState.generatedPlanText?.trim()
+				? workflowState
+				: updateWorkflowGeneratedPlanText(workflowState, renderWorkflowPlanDraft(workflowState.plan));
+			workflowState = updateWorkflowApprovalState(ensuredGeneratedPlanState, nextApproval);
 			persistState(pi, workflowState);
 			updateFooterStatus(ctx, workflowState);
 			ctx.ui.notify(`Plan approval set to ${nextApproval}`, "info");
@@ -864,6 +886,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 					sessionManager.appendCustomEntry(WORKFLOW_STATE_CUSTOM_TYPE, {
 						mode: workflowState.mode,
 						plan: workflowState.plan,
+						generatedPlanText: workflowState.generatedPlanText,
 					});
 					sessionManager.appendSessionInfo(sessionName);
 				},

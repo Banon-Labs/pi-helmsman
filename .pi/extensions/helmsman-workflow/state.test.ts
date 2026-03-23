@@ -8,6 +8,7 @@ import {
 	parsePreHandoffReview,
 	restoreWorkflowState,
 	sanitizeWorkflowPlanState,
+	updateWorkflowGeneratedPlanText,
 	shouldRunPreHandoffReview,
 	updateWorkflowApprovalState,
 	updateWorkflowMode,
@@ -33,6 +34,7 @@ describe("createDefaultWorkflowState", () => {
 				explorationCommands: [],
 				phases: [],
 			},
+			generatedPlanText: undefined,
 		});
 	});
 });
@@ -59,6 +61,7 @@ describe("restoreWorkflowState", () => {
 						explorationCommands: ["rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200"],
 						phases: [{ name: "Inspect", steps: ["Read files", "Summarize approach", "Prepare implementation"] }],
 					},
+					generatedPlanText: "Goal: ship workflow skeleton\nPlan:\nPhase 1: Inspect\n1. Read files",
 				},
 			},
 		]);
@@ -68,6 +71,7 @@ describe("restoreWorkflowState", () => {
 		expect(state.plan.currentPhase).toBe(1);
 		expect(state.plan.currentStep).toBe(2);
 		expect(state.plan.targetFiles).toEqual([".pi/extensions/helmsman-workflow.ts"]);
+		expect(state.generatedPlanText).toBe("Goal: ship workflow skeleton\nPlan:\nPhase 1: Inspect\n1. Read files");
 		expect(state.plan.approvalState).toBe("approved");
 		expect(state.plan.constraints).toEqual(["stay scoped"]);
 		expect(state.plan.explorationCommands).toEqual(["rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200"]);
@@ -126,6 +130,15 @@ describe("workflow state updates", () => {
 		expect(resetWithGoal.plan.approvalState).toBe("draft");
 		expect(resetWithGoal.plan.goal).toContain("Resume the next planning pass");
 		expect(resetWithGoal.plan.targetFiles).toEqual([".pi/extensions/helmsman-workflow.ts"]);
+	});
+
+	test("stores and clears the exact generated approval document text separately from structured plan state", () => {
+		const state = updateWorkflowPlanScaffold(createDefaultWorkflowState(), "Inspect .pi/extensions/helmsman-workflow.ts");
+		const updated = updateWorkflowGeneratedPlanText(state, "Goal: exact generated doc\nPlan:\nPhase 1: Inspect\n1. Read the file");
+		const cleared = updateWorkflowGeneratedPlanText(updated, "   ");
+
+		expect(updated.generatedPlanText).toContain("Goal: exact generated doc");
+		expect(cleared.generatedPlanText).toBeUndefined();
 	});
 
 	test("updates mode without losing scaffold", () => {

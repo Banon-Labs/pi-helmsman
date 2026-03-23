@@ -22,6 +22,7 @@ export interface WorkflowPlanState {
 export interface WorkflowState {
 	mode: WorkflowMode;
 	plan: WorkflowPlanState;
+	generatedPlanText?: string;
 }
 
 export type WorkflowReviewDecision = "continue" | "handoff";
@@ -58,6 +59,7 @@ export interface ParsedWorkflowPlanResult {
 export interface WorkflowStateEntryData {
 	mode?: WorkflowMode;
 	plan?: Partial<WorkflowPlanState>;
+	generatedPlanText?: string;
 }
 
 export interface CustomStateEntryLike {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { renderWorkflowPlanDraft } from "./draft";
+import { renderWorkflowPlanDraft, resolveWorkflowPlanDocumentText } from "./draft";
 import { parseWorkflowPlanFromText } from "./parse-plan";
 
 describe("renderWorkflowPlanDraft", () => {
@@ -60,5 +60,27 @@ describe("renderWorkflowPlanDraft", () => {
 		expect(rendered).toContain("Plan:\nPhase 1: Pending\n1. Define the next concrete planning step");
 		expect(rendered).toContain("\n\nChoices:\n1. Approve this plan and proceed.");
 		expect(rendered).toContain("3. Something else");
+	});
+
+	test("prefers the exact generated plan document when it was persisted", () => {
+		const generatedPlanText = "Goal: custom proposal\nPlan:\nPhase 1: Explore\n- Follow the non-standard template";
+		const resolved = resolveWorkflowPlanDocumentText({
+			mode: "plan",
+			generatedPlanText,
+			plan: {
+				goal: "Inspect .pi/extensions/helmsman-workflow.ts",
+				currentPhase: 1,
+				currentStep: 1,
+				targetFiles: [".pi/extensions/helmsman-workflow.ts"],
+				approvalState: "draft",
+				constraints: [],
+				assumptions: [],
+				verificationNotes: [],
+				explorationCommands: [],
+				phases: [{ name: "Inspect", steps: ["Read file"] }],
+			},
+		});
+
+		expect(resolved).toBe(generatedPlanText);
 	});
 });

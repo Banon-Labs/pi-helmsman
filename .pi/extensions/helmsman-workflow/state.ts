@@ -26,6 +26,7 @@ export function createDefaultWorkflowState(): WorkflowState {
 			explorationCommands: [],
 			phases: [],
 		},
+		generatedPlanText: undefined,
 	};
 }
 
@@ -51,6 +52,7 @@ export function restoreWorkflowState(entries: CustomStateEntryLike[]): WorkflowS
 			explorationCommands: latest.data.plan?.explorationCommands ?? defaults.plan.explorationCommands,
 			phases: latest.data.plan?.phases ?? defaults.plan.phases,
 		},
+		generatedPlanText: latest.data.generatedPlanText ?? defaults.generatedPlanText,
 	};
 }
 
@@ -105,6 +107,14 @@ export function resetWorkflowStateForFreshPlanning(goal = ""): WorkflowState {
 	const defaults = createDefaultWorkflowState();
 	if (!goal.trim()) return defaults;
 	return updateWorkflowPlanScaffold(defaults, goal);
+}
+
+export function updateWorkflowGeneratedPlanText(state: WorkflowState, generatedPlanText?: string): WorkflowState {
+	const trimmed = generatedPlanText?.trim();
+	return {
+		...state,
+		generatedPlanText: trimmed ? generatedPlanText : undefined,
+	};
 }
 
 export function buildParkedWorkflowPlan(stashRef: string, targetFiles: string[], stashMessage?: string): WorkflowPlanState {

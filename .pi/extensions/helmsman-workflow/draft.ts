@@ -1,4 +1,4 @@
-import type { WorkflowPlanState } from "./types";
+import type { WorkflowPlanState, WorkflowState } from "./types";
 
 function formatBullets(items: string[]): string {
 	return items.length > 0 ? items.map((item) => `- ${item}`).join("\n") : "- none";
@@ -41,4 +41,9 @@ export function renderWorkflowPlanDraft(plan: WorkflowPlanState): string {
 		"",
 		`Choices:\n${formatChoices()}`,
 	].join("\n");
+}
+
+export function resolveWorkflowPlanDocumentText(state: WorkflowState): string {
+	const trimmed = state.generatedPlanText?.trim();
+	return trimmed ? state.generatedPlanText! : renderWorkflowPlanDraft(state.plan);
 }

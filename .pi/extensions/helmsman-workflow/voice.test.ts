@@ -4,6 +4,7 @@ import {
 	buildCollaborativeReplanNotice,
 	buildPlanModeActivationNotice,
 	buildPlanModeSystemPrompt,
+	buildRiskyStepEvidencePolicyPrompt,
 	buildStrictStructuredPlanPrompt,
 	buildVerificationFailureNotice,
 	getApprovalRequiredChoices,
@@ -19,6 +20,10 @@ describe("helmsman workflow voice helpers", () => {
 		expect(prompt).toContain("Surface assumptions and uncertainty plainly");
 		expect(prompt).toContain("fetch_web");
 		expect(prompt).toContain("search_web");
+		expect(prompt).toContain("require a visible evidence-first verification packet before any administrative or completion action");
+		expect(prompt).toContain("show concrete RTK command outputs");
+		expect(prompt).toContain("Present raw evidence first, then a separate cross-check section");
+		expect(prompt).toContain("Fail closed");
 		expect(prompt).toContain("Return only a strict Helmsman-compatible /plan string.");
 		expect(prompt).toContain("Goal:");
 		expect(prompt).toContain("Constraints:");
@@ -29,6 +34,18 @@ describe("helmsman workflow voice helpers", () => {
 		expect(prompt).toContain("Verification Notes:");
 		expect(prompt).toContain("Approval State:");
 		expect(prompt).toContain("Do not add prose before or after the structured plan.");
+	});
+
+	test("risky-step evidence policy prompt requires explicit evidence and fail-closed gating", () => {
+		const prompt = buildRiskyStepEvidencePolicyPrompt();
+		expect(prompt).toContain("closing or reopening a bd issue");
+		expect(prompt).toContain("claiming completion");
+		expect(prompt).toContain("show concrete RTK command outputs");
+		expect(prompt).toContain("direct parser/draft inspection");
+		expect(prompt).toContain("runtime smoke evidence when behavior changed");
+		expect(prompt).toContain("Present raw evidence first, then a separate cross-check section");
+		expect(prompt).toContain("Fail closed");
+		expect(prompt).toContain("pre-mutation confidence checkpoint");
 	});
 
 	test("strict structured plan prompt enumerates the required schema in order", () => {

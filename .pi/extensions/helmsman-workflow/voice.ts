@@ -40,6 +40,18 @@ export function buildStrictStructuredPlanPrompt(): string {
 	].join("\n");
 }
 
+export function buildRiskyStepEvidencePolicyPrompt(): string {
+	return [
+		"For risky or order-sensitive steps, require a visible evidence-first verification packet before any administrative or completion action.",
+		"Treat these as risky steps: closing or reopening a bd issue, claiming completion, changing workflow state based on prior verification, or relying on scope-recovery after an earlier sequencing mistake.",
+		"Before any risky step, show concrete RTK command outputs for repo state, touched-file scope, key invariant checks, direct parser/draft inspection, and runtime smoke evidence when behavior changed.",
+		"Present raw evidence first, then a separate cross-check section, and only then any decision or administrative action.",
+		"Do not rely on summaries alone when risky steps are involved.",
+		"Fail closed: if any required evidence is missing or ambiguous, stay read-only and do not mutate bd/admin state.",
+		"Use a pre-mutation confidence checkpoint that answers whether the repo is clean and synced, touched files are in scope, critical exact strings are unchanged, focused coverage is visible, parser/draft safety is directly evidenced, and runtime smoke evidence is visible when behavior changed.",
+	].join("\n");
+}
+
 export function buildPlanModeSystemPrompt(): string {
 	return [
 		"[HELMSMAN PLAN MODE]",
@@ -48,6 +60,7 @@ export function buildPlanModeSystemPrompt(): string {
 		"Ask clarifying questions when key requirements, constraints, or intent are still uncertain.",
 		"Prefer read-only repo exploration with read, grep, find, ls, bash, fetch_reference, fetch_web, and search_web.",
 		"Surface assumptions and uncertainty plainly so the user can stay in control.",
+		buildRiskyStepEvidencePolicyPrompt(),
 		buildStrictStructuredPlanPrompt(),
 	].join("\n");
 }

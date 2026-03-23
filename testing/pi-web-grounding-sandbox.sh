@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./pi-sandbox-state.sh
+source "$SCRIPT_DIR/pi-sandbox-state.sh"
+
 usage() {
 	cat <<'EOF'
 Usage:
@@ -17,6 +21,7 @@ Options:
                           (default: 3)
   --sandbox-root <path>   sandbox root (default: mktemp dir)
   --capture-out <path>    final capture output path
+  --no-mirror-host-state  do not copy ~/.pi/agent/auth.json and settings.json into the sandbox
   --wait-seconds <n>      wait after command submission (default: 7)
   --no-demo               launch pi in the sandbox but do not auto-run the
                           /authoritative-web workflow command
@@ -41,6 +46,7 @@ SANDBOX_ROOT=""
 CAPTURE_OUT=""
 WAIT_SECONDS="7"
 RUN_DEMO="1"
+MIRROR_HOST_STATE="1"
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
@@ -63,6 +69,10 @@ while [[ $# -gt 0 ]]; do
 	--capture-out)
 		CAPTURE_OUT="${2:-}"
 		shift 2
+		;;
+	--no-mirror-host-state)
+		MIRROR_HOST_STATE="0"
+		shift 1
 		;;
 	--wait-seconds)
 		WAIT_SECONDS="${2:-}"
@@ -100,11 +110,15 @@ if [[ -z "$CAPTURE_OUT" ]]; then
 fi
 
 WORKDIR="$SANDBOX_ROOT/workdir"
-mkdir -p "$WORKDIR"
+AGENT_DIR="$SANDBOX_ROOT/agent"
+mkdir -p "$WORKDIR" "$AGENT_DIR"
+if [[ "$MIRROR_HOST_STATE" == "1" ]]; then
+	mirror_pi_agent_state "$AGENT_DIR"
+fi
 rm -f "$CAPTURE_OUT"
 
 tmux kill-session -t "$SESSION" 2>/dev/null || true
-tmux new-session -d -s "$SESSION" "cd '$WORKDIR' && pi"
+tmux new-session -d -s "$SESSION" "cd '$WORKDIR' && PI_CODING_AGENT_DIR='$AGENT_DIR' pi"
 
 start_ts="$(date +%s)"
 while true; do
@@ -137,3 +151,5 @@ printf 'session=%s\n' "$SESSION"
 printf 'sandbox_root=%s\n' "$SANDBOX_ROOT"
 printf 'workdir=%s\n' "$WORKDIR"
 printf 'capture_out=%s\n' "$CAPTURE_OUT"
+printf 'agent_dir=%s\n' "$AGENT_DIR"
+printf 'mirrored_host_state=%s\n' "$MIRROR_HOST_STATE"

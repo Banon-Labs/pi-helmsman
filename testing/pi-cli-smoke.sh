@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./pi-sandbox-state.sh
+source "$SCRIPT_DIR/pi-sandbox-state.sh"
+
 usage() {
 	cat <<'EOF'
 Usage:
@@ -14,6 +18,7 @@ Optional:
   --workdir <path>        working directory for pi (default: current directory)
   --sandbox-root <path>   isolated PI_CODING_AGENT_DIR root (default: mktemp dir)
   --extension <path>      extension file passed via -e (repeatable)
+  --no-mirror-host-state  do not copy ~/.pi/agent/auth.json and settings.json into the sandbox
   --capture-out <path>    pane capture output path
   --capture-lines <n>     tmux history lines to capture (default: 320)
   --ready-timeout-seconds <n>
@@ -38,6 +43,7 @@ READY_TIMEOUT_SECONDS="30"
 READY_PROBE_INTERVAL_SECONDS="1"
 SUBMIT_KEY="Enter"
 WAIT_SECONDS="8"
+MIRROR_HOST_STATE="1"
 declare -a EXTENSIONS=()
 
 while [[ $# -gt 0 ]]; do
@@ -61,6 +67,10 @@ while [[ $# -gt 0 ]]; do
 	--extension)
 		EXTENSIONS+=("${2:-}")
 		shift 2
+		;;
+	--no-mirror-host-state)
+		MIRROR_HOST_STATE="0"
+		shift 1
 		;;
 	--capture-out)
 		CAPTURE_OUT="${2:-}"
@@ -125,6 +135,9 @@ fi
 
 AGENT_DIR="$SANDBOX_ROOT/agent"
 mkdir -p "$AGENT_DIR"
+if [[ "$MIRROR_HOST_STATE" == "1" ]]; then
+	mirror_pi_agent_state "$AGENT_DIR"
+fi
 rm -f "$CAPTURE_OUT"
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 
@@ -169,4 +182,5 @@ tmux capture-pane -p -t "$SESSION" -S -"$CAPTURE_LINES" > "$CAPTURE_OUT"
 printf 'session=%s\n' "$SESSION"
 printf 'sandbox_root=%s\n' "$SANDBOX_ROOT"
 printf 'agent_dir=%s\n' "$AGENT_DIR"
+printf 'mirrored_host_state=%s\n' "$MIRROR_HOST_STATE"
 printf 'capture_out=%s\n' "$CAPTURE_OUT"

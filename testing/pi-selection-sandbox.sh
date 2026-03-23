@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./pi-sandbox-state.sh
+source "$SCRIPT_DIR/pi-sandbox-state.sh"
+
 usage() {
 	cat <<'EOF'
 Usage:
@@ -14,6 +18,7 @@ Options:
   --session <name>        tmux session name (required)
   --sandbox-root <path>   sandbox root (default: mktemp dir)
   --capture-out <path>    final capture output path
+  --no-mirror-host-state  do not copy ~/.pi/agent/auth.json and settings.json into the sandbox
   --wait-seconds <n>      wait after each step (default: 4)
 
 Artifacts written beside the final capture:
@@ -31,6 +36,7 @@ SESSION=""
 SANDBOX_ROOT=""
 CAPTURE_OUT=""
 WAIT_SECONDS="4"
+MIRROR_HOST_STATE="1"
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
@@ -45,6 +51,10 @@ while [[ $# -gt 0 ]]; do
 	--capture-out)
 		CAPTURE_OUT="${2:-}"
 		shift 2
+		;;
+	--no-mirror-host-state)
+		MIRROR_HOST_STATE="0"
+		shift 1
 		;;
 	--wait-seconds)
 		WAIT_SECONDS="${2:-}"
@@ -86,6 +96,9 @@ REPO_BETA="$WORKSPACE_ROOT/beta-repo"
 AGENT_DIR="$SANDBOX_ROOT/agent"
 
 mkdir -p "$NON_REPO_WORKDIR" "$REPO_ALPHA/.git" "$REPO_BETA/.git" "$AGENT_DIR"
+if [[ "$MIRROR_HOST_STATE" == "1" ]]; then
+	mirror_pi_agent_state "$AGENT_DIR"
+fi
 rm -f "$CAPTURE_OUT" "$CAPTURE_BEFORE_SELECT" "$CAPTURE_AFTER_SELECT"
 
 tmux kill-session -t "$SESSION" 2>/dev/null || true
@@ -132,3 +145,5 @@ printf 'workspace_root=%s\n' "$WORKSPACE_ROOT"
 printf 'capture_before_select=%s\n' "$CAPTURE_BEFORE_SELECT"
 printf 'capture_after_select=%s\n' "$CAPTURE_AFTER_SELECT"
 printf 'capture_out=%s\n' "$CAPTURE_OUT"
+printf 'agent_dir=%s\n' "$AGENT_DIR"
+printf 'mirrored_host_state=%s\n' "$MIRROR_HOST_STATE"

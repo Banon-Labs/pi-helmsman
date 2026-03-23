@@ -14,6 +14,7 @@ help_output="$(bash "$script" --help)"
 [[ "$help_output" == *"--prompt <text>"* ]]
 [[ "$help_output" == *"--sandbox-root <path>"* ]]
 [[ "$help_output" == *"--extension <path>"* ]]
+[[ "$help_output" == *"--no-mirror-host-state"* ]]
 [[ "$help_output" == *"tmux"* ]]
 
 echo "pi-cli-smoke help contract ok"

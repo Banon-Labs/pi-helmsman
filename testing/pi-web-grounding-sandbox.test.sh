@@ -13,6 +13,7 @@ help_output="$(bash "$script" --help)"
 [[ "$help_output" == *"--session <name>"* ]]
 [[ "$help_output" == *"--query <text>"* ]]
 [[ "$help_output" == *"--no-demo"* ]]
+[[ "$help_output" == *"--no-mirror-host-state"* ]]
 [[ "$help_output" == *"/authoritative-web --limit <n> <query>"* ]]
 [[ "$help_output" == *"/fetch-web --format markdown <chosen-url>"* ]]
 

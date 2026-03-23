@@ -12,6 +12,7 @@ help_output="$(bash "$script" --help)"
 
 [[ "$help_output" == *"--session <name>"* ]]
 [[ "$help_output" == *"--capture-out <path>"* ]]
+[[ "$help_output" == *"--no-mirror-host-state"* ]]
 [[ "$help_output" == *"ambiguous repo-selection sandbox"* ]]
 [[ "$help_output" == *"capture.before-select.txt"* ]]
 [[ "$help_output" == *"/context-switch"* ]]

@@ -1,19 +1,31 @@
 import {
+	createBashTool,
 	createLocalBashOperations,
 	type ExtensionAPI,
-	isToolCallEventType,
 } from "@mariozechner/pi-coding-agent";
 import {
 	buildRtkInputRewriteText,
-	buildRtkToolBlockReason,
 	buildRtkUserBashNotice,
 	getRtkEquivalent,
 	looksLikeBareInspectionPrompt,
 } from "./rtk-first/policy.js";
+import { createRtkSpawnHook, createRtkStatusSnapshot, formatRtkStatusReport, rewriteModeSeverity } from "./rtk-first/rewrite.js";
 
 const SYSTEM_PROMPT_APPEND = `Prefer RTK wrapper commands for read-only inspection whenever an RTK equivalent exists. In this workspace: file reads should use rtk read; git inspection should prefer rtk git status/diff/log/show/branch; search and discovery should prefer rtk find, rtk grep, and rtk ls. Only fall back to native read-only shell commands when RTK lacks the needed behavior.`;
 
 export default function rtkFirstExtension(pi: ExtensionAPI) {
+	const cwd = process.cwd();
+	const bashTool = createBashTool(cwd, {
+		spawnHook: createRtkSpawnHook(),
+	});
+
+	pi.registerTool({
+		...bashTool,
+		async execute(toolCallId, params, signal, onUpdate, _ctx) {
+			return bashTool.execute(toolCallId, params, signal, onUpdate);
+		},
+	});
+
 	pi.on("before_agent_start", async (event) => {
 		if (!event.prompt.trim()) return;
 		return {
@@ -50,13 +62,16 @@ export default function rtkFirstExtension(pi: ExtensionAPI) {
 		};
 	});
 
-	pi.on("tool_call", async (event) => {
-		if (!isToolCallEventType("bash", event)) return;
-		const rewrite = getRtkEquivalent(event.input.command);
-		if (!rewrite) return;
-		return {
-			block: true,
-			reason: buildRtkToolBlockReason(rewrite),
-		};
+	pi.registerCommand("rtk-status", {
+		description: "Show whether RTK-backed bash rewriting is active or safely falling back to normal bash execution",
+		handler: async (_args, ctx) => {
+			const snapshot = createRtkStatusSnapshot({ cwd: ctx.cwd, env: process.env });
+			const report = formatRtkStatusReport(snapshot);
+			if (ctx.hasUI) {
+				ctx.ui.notify(report, rewriteModeSeverity(snapshot));
+				return;
+			}
+			console.log(report);
+		},
 	});
 }

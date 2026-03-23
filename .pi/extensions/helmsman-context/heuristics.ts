@@ -36,6 +36,19 @@ const READ_ONLY_PREFIXES = [
 	"rtk ls",
 ];
 
+function stripLeadingReadOnlyShellWrappers(command: string): string {
+	let normalized = command.trim();
+	for (let depth = 0; depth < 4; depth += 1) {
+		const cdWrapper = normalized.match(/^cd\s+[^&|;]+\s+&&\s+(.+)$/i);
+		if (cdWrapper) {
+			normalized = cdWrapper[1].trim();
+			continue;
+		}
+		break;
+	}
+	return normalized;
+}
+
 function normalizeText(text: string): string {
 	return text.toLowerCase();
 }
@@ -166,7 +179,7 @@ export function assessContext(input: AssessContextInput): ContextAssessment {
 }
 
 export function isReadOnlyBashCommand(command: string): boolean {
-	const normalized = command.trim().toLowerCase();
+	const normalized = stripLeadingReadOnlyShellWrappers(command).toLowerCase();
 	if (!normalized) return true;
 	if (["&&", "||", ";", ">", "<", " rm ", " mv ", " cp ", " chmod ", " chown "].some((token) => normalized.includes(token))) {
 		return false;

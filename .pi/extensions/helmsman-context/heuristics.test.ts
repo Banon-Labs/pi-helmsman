@@ -192,6 +192,8 @@ describe("isReadOnlyBashCommand", () => {
 		expect(isReadOnlyBashCommand("rg -n \"context\" .")).toBe(true);
 		expect(isReadOnlyBashCommand("rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200")).toBe(true);
 		expect(isReadOnlyBashCommand("rtk git diff -- ./.pi/extensions/helmsman-workflow.ts")).toBe(true);
+		expect(isReadOnlyBashCommand("cd /home/choza/projects/pi-helmsman && pwd")).toBe(true);
+		expect(isReadOnlyBashCommand("cd /home/choza/projects/pi-helmsman && rtk git status --short --branch")).toBe(true);
 	});
 
 	test("rejects mutating bash commands", () => {

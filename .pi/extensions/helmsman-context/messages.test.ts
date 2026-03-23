@@ -5,7 +5,10 @@ import {
 	buildContextMutationBlockReason,
 	buildContextRouteNotice,
 	buildContextSwitchUnavailableNotice,
+	buildDirtyWorktreeGuardMessage,
+	buildDirtyWorktreeMutationBlockReason,
 } from "./messages";
+import type { DirtyWorktreeAssessment } from "./dirty";
 import type { ContextAssessment } from "./types";
 
 function buildAssessment(): ContextAssessment {
@@ -22,6 +25,21 @@ function buildAssessment(): ContextAssessment {
 		blockMutations: true,
 		summary: "Context uncertain: repo suitability is unresolved",
 		candidates: [],
+	};
+}
+
+function buildDirtyAssessment(): DirtyWorktreeAssessment {
+	return {
+		entries: [
+			{ path: ".pi/extensions/smart-voice-notify.ts", kind: "tracked", rawStatus: " M", disposition: "unrelated" },
+		],
+		inScopeEntries: [],
+		transientEntries: [],
+		blockingEntries: [
+			{ path: ".pi/extensions/smart-voice-notify.ts", kind: "tracked", rawStatus: " M", disposition: "unrelated" },
+		],
+		summary: "Dirty worktree: 1 unrelated, 0 in-scope, 0 transient path(s).",
+		blocksMutation: true,
 	};
 }
 
@@ -56,5 +74,11 @@ describe("helmsman context messaging", () => {
 	test("route/unavailable notices stay explicit without sounding scolding", () => {
 		expect(buildContextSwitchUnavailableNotice()).toContain("couldn’t identify a confident target repo yet");
 		expect(buildContextRouteNotice("/workspace/target")).toContain("Prepared a context-correction route");
+	});
+
+	test("dirty-worktree helpers explain the blocking paths", () => {
+		expect(buildDirtyWorktreeGuardMessage(buildDirtyAssessment())).toContain("[HELMSMAN DIRTY WORKTREE]");
+		expect(buildDirtyWorktreeGuardMessage(buildDirtyAssessment())).toContain("smart-voice-notify.ts");
+		expect(buildDirtyWorktreeMutationBlockReason(buildDirtyAssessment())).toContain("blocking mutation");
 	});
 });

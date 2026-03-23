@@ -1,4 +1,5 @@
 import type { ContextAssessment } from "./types.js";
+import type { DirtyWorktreeAssessment } from "./dirty.js";
 
 export function buildContextGuardMessage(assessment: ContextAssessment): string {
 	const guidance = assessment.blockMutations
@@ -26,4 +27,20 @@ export function buildContextSwitchUnavailableNotice(): string {
 
 export function buildContextRouteNotice(targetRepoRoot: string): string {
 	return `Prepared a context-correction route into ${targetRepoRoot}. Review it and continue there when you’re ready.`;
+}
+
+export function buildDirtyWorktreeGuardMessage(assessment: DirtyWorktreeAssessment): string {
+	const blockingPaths = assessment.blockingEntries.slice(0, 5).map((entry) => `- ${entry.path}`).join("\n") || "- none";
+	return [
+		"[HELMSMAN DIRTY WORKTREE]",
+		assessment.summary,
+		"Hold off on mutations until unrelated dirty paths are reviewed or cleaned up.",
+		"Blocking paths:",
+		blockingPaths,
+	].join("\n");
+}
+
+export function buildDirtyWorktreeMutationBlockReason(assessment: DirtyWorktreeAssessment): string {
+	const blockingPaths = assessment.blockingEntries.slice(0, 3).map((entry) => entry.path).join(", ");
+	return `${assessment.summary} I’m blocking mutation until unrelated dirty paths are reviewed: ${blockingPaths || "none"}.`;
 }

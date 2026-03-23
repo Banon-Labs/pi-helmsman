@@ -1,5 +1,6 @@
 import { dirname } from "node:path";
 import type { ExtensionAPI, ExtensionContext, ToolCallEvent } from "@mariozechner/pi-coding-agent";
+import { assessDirtyWorktree, formatDirtyWorktreeAssessment, type DirtyWorktreeAssessment } from "./helmsman-context/dirty.js";
 import { collectWorkspaceEvidence } from "./helmsman-context/evidence.js";
 import { discoverRepoCandidates, findRepoRoot } from "./helmsman-context/filesystem.js";
 import { detectSuggestedFolder } from "./helmsman-context/folders.js";
@@ -18,14 +19,18 @@ import {
 	buildContextMutationBlockReason,
 	buildContextRouteNotice,
 	buildContextSwitchUnavailableNotice,
+	buildDirtyWorktreeGuardMessage,
+	buildDirtyWorktreeMutationBlockReason,
 } from "./helmsman-context/messages.js";
 import { restoreTrackedGoal } from "./helmsman-context/state.js";
+import { restoreWorkflowState } from "./helmsman-workflow/state.js";
 import type { ContextAssessment } from "./helmsman-context/types.js";
 
 const COMMAND_NAME = "context";
 const SWITCH_COMMAND_NAME = "context-switch";
 const CUSTOM_TYPE = "helmsman-context";
 const READ_ONLY_CUSTOM_TOOLS = new Set(["fetch_reference", "fetch_web", "search_web", "questionnaire"]);
+export const CONTINUATION_ROUTE_MARKER = "[Helmsman continuation route]";
 
 function getWorkspaceRoot(cwd: string): string {
 	const repoRoot = findRepoRoot(cwd);
@@ -71,11 +76,12 @@ export function formatAssessment(assessment: ContextAssessment): string {
 	].join("\n");
 }
 
-function formatRoutePlan(command: string, handoffPrompt: string): string {
+export function formatRoutePlan(command: string, handoffPrompt: string): string {
 	return [
 		"Explicit context-correction flow:",
 		`1. Run: ${command}`,
 		"2. In the target repo session, continue with this prompt:",
+		CONTINUATION_ROUTE_MARKER,
 		handoffPrompt,
 	].join("\n");
 }
@@ -118,12 +124,28 @@ function isMutatingToolCall(event: ToolCallEvent): boolean {
 
 export default function helmsmanContextExtension(pi: ExtensionAPI) {
 	let lastAssessment: ContextAssessment | undefined;
+	let lastDirtyWorktree: DirtyWorktreeAssessment | undefined;
 	let lastInputText = "";
 	let lastGoalText = "";
+
+	async function refreshDirtyWorktree(ctx: ExtensionContext): Promise<DirtyWorktreeAssessment> {
+		const repoRoot = findRepoRoot(ctx.cwd);
+		if (!repoRoot) {
+			lastDirtyWorktree = assessDirtyWorktree("", []);
+			return lastDirtyWorktree;
+		}
+		const workflowState = restoreWorkflowState(
+			ctx.sessionManager.getBranch() as Array<{ type: string; customType?: string; data?: unknown }>,
+		);
+		const result = await pi.exec("git", ["status", "--short", "--untracked-files=all"], { cwd: repoRoot });
+		lastDirtyWorktree = assessDirtyWorktree(result.stdout, workflowState.plan.targetFiles);
+		return lastDirtyWorktree;
+	}
 
 	async function refreshAssessment(ctx: ExtensionContext, inputText = lastInputText) {
 		lastInputText = inputText;
 		lastAssessment = await computeAssessment(ctx.cwd, inputText, lastGoalText, ctx.sessionManager.getSessionFile());
+		await refreshDirtyWorktree(ctx);
 		updateStatus(ctx, lastAssessment);
 		return lastAssessment;
 	}
@@ -148,7 +170,7 @@ export default function helmsmanContextExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("input", async (event, ctx) => {
-		if (shouldTrackAsGoal(event.text)) {
+		if (event.source !== "extension" && shouldTrackAsGoal(event.text)) {
 			lastGoalText = event.text.trim();
 			persistTrackedGoal();
 		}
@@ -158,6 +180,16 @@ export default function helmsmanContextExtension(pi: ExtensionAPI) {
 
 	pi.on("before_agent_start", async (_event, ctx) => {
 		const assessment = lastAssessment ?? (await refreshAssessment(ctx, lastInputText));
+		const dirtyWorktree = lastDirtyWorktree ?? (await refreshDirtyWorktree(ctx));
+		if (dirtyWorktree.blocksMutation) {
+			return {
+				message: {
+					customType: CUSTOM_TYPE,
+					content: buildDirtyWorktreeGuardMessage(dirtyWorktree),
+					display: false,
+				},
+			};
+		}
 		if (assessment.state === "healthy") return;
 		return {
 			message: {
@@ -170,8 +202,15 @@ export default function helmsmanContextExtension(pi: ExtensionAPI) {
 
 	pi.on("tool_call", async (event, ctx) => {
 		const assessment = lastAssessment ?? (await refreshAssessment(ctx, lastInputText));
-		if (!assessment.blockMutations) return;
+		const dirtyWorktree = lastDirtyWorktree ?? (await refreshDirtyWorktree(ctx));
 		if (!isMutatingToolCall(event)) return;
+		if (dirtyWorktree.blocksMutation) {
+			return {
+				block: true,
+				reason: buildDirtyWorktreeMutationBlockReason(dirtyWorktree),
+			};
+		}
+		if (!assessment.blockMutations) return;
 		return {
 			block: true,
 			reason: buildContextMutationBlockReason(assessment.summary, COMMAND_NAME),
@@ -180,8 +219,19 @@ export default function helmsmanContextExtension(pi: ExtensionAPI) {
 
 	pi.on("user_bash", async (event, ctx) => {
 		const assessment = lastAssessment ?? (await refreshAssessment(ctx, lastInputText));
-		if (!assessment.blockMutations) return;
+		const dirtyWorktree = lastDirtyWorktree ?? (await refreshDirtyWorktree(ctx));
 		if (isReadOnlyBashCommand(event.command)) return;
+		if (dirtyWorktree.blocksMutation) {
+			return {
+				result: {
+					output: buildDirtyWorktreeMutationBlockReason(dirtyWorktree),
+					exitCode: 1,
+					cancelled: false,
+					truncated: false,
+				},
+			};
+		}
+		if (!assessment.blockMutations) return;
 		return {
 			result: {
 				output: buildContextDirectBashBlockOutput(assessment.summary, COMMAND_NAME),
@@ -196,8 +246,9 @@ export default function helmsmanContextExtension(pi: ExtensionAPI) {
 		description: "Inspect Helmsman repo-context assessment and candidate routing",
 		handler: async (args, ctx) => {
 			const assessment = await refreshAssessment(ctx, args.trim() || lastInputText);
-			const content = formatAssessment(assessment);
-			ctx.ui.notify(assessment.summary, assessment.state === "healthy" ? "info" : "warning");
+			const dirtyWorktree = lastDirtyWorktree ?? (await refreshDirtyWorktree(ctx));
+			const content = [formatAssessment(assessment), "", "Dirty worktree:", formatDirtyWorktreeAssessment(dirtyWorktree)].join("\n");
+			ctx.ui.notify(dirtyWorktree.blocksMutation ? dirtyWorktree.summary : assessment.summary, dirtyWorktree.blocksMutation || assessment.state !== "healthy" ? "warning" : "info");
 			pi.sendMessage({
 				customType: CUSTOM_TYPE,
 				content,

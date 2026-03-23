@@ -6,6 +6,7 @@ import { discoverRepoCandidates, findRepoRoot } from "./helmsman-context/filesys
 import { detectSuggestedFolder } from "./helmsman-context/folders.js";
 import { chooseRouteGoal, shouldTrackAsGoal } from "./helmsman-context/goal.js";
 import { assessContext, isReadOnlyBashCommand } from "./helmsman-context/heuristics.js";
+import { resolveParkedWorkflowTargets } from "./helmsman-context/parking.js";
 import { buildContextRoutePlan } from "./helmsman-context/route.js";
 import {
 	chooseSelectableCandidates,
@@ -23,7 +24,7 @@ import {
 	buildDirtyWorktreeMutationBlockReason,
 } from "./helmsman-context/messages.js";
 import { restoreTrackedGoal } from "./helmsman-context/state.js";
-import { restoreWorkflowState } from "./helmsman-workflow/state.js";
+import { createDefaultWorkflowState, restoreWorkflowState, updateWorkflowPlanScaffold } from "./helmsman-workflow/state.js";
 import type { ContextAssessment } from "./helmsman-context/types.js";
 
 const COMMAND_NAME = "context";
@@ -86,6 +87,18 @@ export function formatRoutePlan(command: string, handoffPrompt: string): string 
 	].join("\n");
 }
 
+function uniqueStrings(items: string[]): string[] {
+	const seen = new Set<string>();
+	const result: string[] = [];
+	for (const item of items) {
+		const trimmed = item.trim();
+		if (!trimmed || seen.has(trimmed)) continue;
+		seen.add(trimmed);
+		result.push(trimmed);
+	}
+	return result;
+}
+
 function updateStatus(ctx: ExtensionContext, assessment: ContextAssessment | undefined): void {
 	if (!assessment) {
 		ctx.ui.setStatus("helmsman-context", ctx.ui.theme.fg("warning", "ctx:unknown"));
@@ -137,8 +150,28 @@ export default function helmsmanContextExtension(pi: ExtensionAPI) {
 		const workflowState = restoreWorkflowState(
 			ctx.sessionManager.getBranch() as Array<{ type: string; customType?: string; data?: unknown }>,
 		);
+		const goalScopedTargets = lastGoalText.trim()
+			? updateWorkflowPlanScaffold(createDefaultWorkflowState(), lastGoalText).plan.targetFiles
+			: [];
+		const activeTargets = uniqueStrings([...workflowState.plan.targetFiles, ...goalScopedTargets]);
 		const result = await pi.exec("git", ["status", "--short", "--untracked-files=all"], { cwd: repoRoot });
-		lastDirtyWorktree = assessDirtyWorktree(result.stdout, workflowState.plan.targetFiles);
+		const stashListResult = await pi.exec("git", ["stash", "list", "--format=%gd\t%s"], { cwd: repoRoot });
+		const traceableParking = resolveParkedWorkflowTargets(activeTargets, stashListResult.stdout, "");
+		let parkedTargets = traceableParking.parkedTargetFiles;
+		if (traceableParking.parkedStash) {
+			const stashShowResult = await pi.exec(
+				"git",
+				["stash", "show", "--name-only", "--format=", traceableParking.parkedStash.ref],
+				{ cwd: repoRoot },
+			);
+			const parkedResolution = resolveParkedWorkflowTargets(
+				activeTargets,
+				stashListResult.stdout,
+				stashShowResult.stdout,
+			);
+			parkedTargets = parkedResolution.parkedTargetFiles;
+		}
+		lastDirtyWorktree = assessDirtyWorktree(result.stdout, uniqueStrings([...activeTargets, ...parkedTargets]));
 		return lastDirtyWorktree;
 	}
 

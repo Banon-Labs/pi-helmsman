@@ -3,6 +3,7 @@ import type {
 	ParsedWorkflowPlanResult,
 	WorkflowApprovalState,
 	WorkflowMode,
+	WorkflowPlanState,
 	WorkflowSelfReview,
 	WorkflowState,
 } from "./types";
@@ -98,6 +99,54 @@ export function updateWorkflowPlanScaffold(state: WorkflowState, goal: string): 
 		...state,
 		plan: sanitizeWorkflowPlanState(buildPlanScaffoldFromGoal(goal)),
 	};
+}
+
+export function resetWorkflowStateForFreshPlanning(goal = ""): WorkflowState {
+	const defaults = createDefaultWorkflowState();
+	if (!goal.trim()) return defaults;
+	return updateWorkflowPlanScaffold(defaults, goal);
+}
+
+export function buildParkedWorkflowPlan(stashRef: string, targetFiles: string[], stashMessage?: string): WorkflowPlanState {
+	const normalizedTargetFiles = Array.from(new Set(targetFiles.map((path) => path.trim()).filter(Boolean)));
+	const trimmedMessage = stashMessage?.trim();
+	return sanitizeWorkflowPlanState({
+		goal: `Resume parked Helmsman edits from ${stashRef}`,
+		currentPhase: 1,
+		currentStep: 1,
+		targetFiles: normalizedTargetFiles,
+		approvalState: "draft",
+		constraints: [
+			"Do not delete parked changes",
+			"Restore from stash before resuming",
+			"Keep Beads traceability",
+		],
+		assumptions: [
+			`stash ref ${stashRef} exists`,
+			trimmedMessage ? `stash message: ${trimmedMessage}` : "stash message identifies the parked task",
+			"no new unrelated edits were mixed in",
+		],
+		verificationNotes: ["Apply the stash", "Confirm git status", "Run focused tests"],
+		explorationCommands: [
+			"git stash list --format='%gd %s'",
+			`git stash show --name-only --format= ${stashRef}`,
+			"rtk git status --short --branch",
+		],
+		phases: [
+			{
+				name: "Parked",
+				steps: ["Keep the edits safely stored in the stash", "Record the stash ref in Beads", "Do not mutate the parked files"],
+			},
+			{
+				name: "Restore",
+				steps: ["Apply the stash when the task resumes", "Confirm the same files return", "Restore staged state only if needed"],
+			},
+			{
+				name: "Validate",
+				steps: ["Confirm the dirty set matches the parked plan", "Run focused tests", "Proceed only after the parked record is consistent"],
+			},
+		],
+	});
 }
 
 export function mergeWorkflowPlanState(current: WorkflowState["plan"], parsed: ParsedWorkflowPlanResult): WorkflowState["plan"] {

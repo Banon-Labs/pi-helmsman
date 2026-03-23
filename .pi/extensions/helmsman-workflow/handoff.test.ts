@@ -19,7 +19,7 @@ function buildState(overrides: Partial<WorkflowState> = {}): WorkflowState {
 			constraints: ["Keep the UX Pi-native"],
 			assumptions: ["Pi session primitives are sufficient for v1"],
 			verificationNotes: ["Run bun test", "Run tmux smoke proof"],
-			explorationCommands: [],
+			explorationCommands: ["rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200", "rtk git status --short --branch"],
 			phases: [
 				{ name: "Implement", steps: ["Add handoff helper", "Wire the command", "Run tests"] },
 				{ name: "Validate", steps: ["Run tmux smoke", "Summarize evidence"] },
@@ -66,6 +66,8 @@ describe("buildWorkflowHandoffPrompt", () => {
 		expect(output).toContain("- Current position: phase 2, step 1");
 		expect(output).toContain("### Target Files");
 		expect(output).toContain("- .pi/extensions/helmsman-workflow.ts");
+		expect(output).toContain("### Read-Only Exploration Commands");
+		expect(output).toContain("rtk git status --short --branch");
 		expect(output).toContain("### Planned Phases");
 		expect(output).toContain("- Phase 1: Implement");
 		expect(output).toContain("## Task\nFinish validation and summarize evidence");

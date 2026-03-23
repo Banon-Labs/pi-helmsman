@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
 	createDefaultWorkflowState,
 	formatWorkflowStatus,
+	buildParkedWorkflowPlan,
 	mergeWorkflowPlanState,
+	resetWorkflowStateForFreshPlanning,
 	parsePreHandoffReview,
 	restoreWorkflowState,
 	sanitizeWorkflowPlanState,
@@ -79,6 +81,53 @@ describe("restoreWorkflowState", () => {
 });
 
 describe("workflow state updates", () => {
+	test("builds a parked workflow plan from a stash reference and exact files", () => {
+		const parkedPlan = buildParkedWorkflowPlan(
+			"stash@{0}",
+			[
+				".pi/extensions/helmsman-workflow.ts",
+				".pi/extensions/helmsman-workflow/handoff.ts",
+				".pi/extensions/helmsman-workflow/state.ts",
+			],
+			"pi-helmsman-l81 / helmsman dirty-worktree park",
+		);
+
+		expect(parkedPlan.goal).toContain("stash@{0}");
+		expect(parkedPlan.approvalState).toBe("draft");
+		expect(parkedPlan.targetFiles).toEqual([
+			".pi/extensions/helmsman-workflow.ts",
+			".pi/extensions/helmsman-workflow/handoff.ts",
+			".pi/extensions/helmsman-workflow/state.ts",
+		]);
+		expect(parkedPlan.constraints).toContain("Do not delete parked changes");
+		expect(parkedPlan.assumptions).toContain("stash ref stash@{0} exists");
+		expect(parkedPlan.verificationNotes).toContain("Apply the stash");
+		expect(parkedPlan.explorationCommands).toEqual([
+			"git stash list --format='%gd %s'",
+			"git stash show --name-only --format= stash@{0}",
+			"rtk git status --short --branch",
+		]);
+		expect(parkedPlan.phases[0].name).toBe("Parked");
+		expect(parkedPlan.phases[1].name).toBe("Restore");
+		expect(parkedPlan.phases[2].name).toBe("Validate");
+	});
+
+	test("resets approved workflow state to a fresh draft planning state", () => {
+		const approved = updateWorkflowApprovalState(
+			updateWorkflowPlanScaffold(createDefaultWorkflowState(), "Land the beads handoff flow in .pi/extensions/helmsman-workflow.ts"),
+			"approved",
+		);
+		const reset = resetWorkflowStateForFreshPlanning();
+		const resetWithGoal = resetWorkflowStateForFreshPlanning("Resume the next planning pass for .pi/extensions/helmsman-workflow.ts");
+
+		expect(approved.plan.approvalState).toBe("approved");
+		expect(reset).toEqual(createDefaultWorkflowState());
+		expect(resetWithGoal.mode).toBe("plan");
+		expect(resetWithGoal.plan.approvalState).toBe("draft");
+		expect(resetWithGoal.plan.goal).toContain("Resume the next planning pass");
+		expect(resetWithGoal.plan.targetFiles).toEqual([".pi/extensions/helmsman-workflow.ts"]);
+	});
+
 	test("updates mode without losing scaffold", () => {
 		const state = updateWorkflowPlanGoal(createDefaultWorkflowState(), "plan the workflow skeleton");
 		const updated = updateWorkflowMode(state, "build");

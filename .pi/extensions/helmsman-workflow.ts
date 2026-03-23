@@ -47,6 +47,7 @@ import {
 	formatWorkflowStatus,
 	mergeWorkflowPlanState,
 	parsePreHandoffReview,
+	resetWorkflowStateForFreshPlanning,
 	restoreWorkflowState,
 	sanitizeWorkflowPlanState,
 	shouldRunPreHandoffReview,
@@ -604,7 +605,10 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 	pi.registerCommand(PLAN_COMMAND, {
 		description: "Enter plan mode and ask the planner model for a structured draft plan",
 		handler: async (args, ctx) => {
-			workflowState = updateWorkflowMode(workflowState, "plan");
+			const nextRequestedGoal = normalizeRequestedPlanGoal(args, workflowState.plan.goal);
+			workflowState = workflowState.plan.approvalState === "approved"
+				? resetWorkflowStateForFreshPlanning(nextRequestedGoal)
+				: updateWorkflowMode(workflowState, "plan");
 			let requestedGoal = normalizeRequestedPlanGoal(args, workflowState.plan.goal);
 			if (ctx.hasUI && shouldPromptForPlanGoal(args, workflowState.plan.goal)) {
 				requestedGoal = (await ctx.ui.input("Helmsman planning goal", "What should this plan accomplish?"))?.trim() ?? "";
@@ -679,6 +683,12 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 				details: draft,
 				display: true,
 			});
+			workflowState = resetWorkflowStateForFreshPlanning();
+			persistState(pi, workflowState);
+			syncActiveTools(pi, workflowState.mode);
+			updateFooterStatus(ctx, workflowState);
+			publishStatus(pi, workflowState, Boolean(ctx.model));
+			ctx.ui.notify("Helmsman reset the active approved plan after Beads draft handoff so later planning starts fresh.", "info");
 		},
 	});
 
@@ -885,7 +895,9 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 				return;
 			}
 
-			workflowState = updateWorkflowMode(workflowState, nextMode);
+			workflowState = nextMode === "plan" && workflowState.plan.approvalState === "approved"
+				? resetWorkflowStateForFreshPlanning()
+				: updateWorkflowMode(workflowState, nextMode);
 			persistState(pi, workflowState);
 			syncActiveTools(pi, workflowState.mode);
 			updateFooterStatus(ctx, workflowState);

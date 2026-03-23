@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { assessDirtyWorktree, classifyDirtyPath, formatDirtyWorktreeAssessment, parseGitStatusPorcelain } from "./dirty";
+import { resolveParkedWorkflowTargets } from "./parking";
 
 describe("parseGitStatusPorcelain", () => {
 	test("parses tracked, untracked, and rename entries", () => {
@@ -46,6 +47,48 @@ describe("assessDirtyWorktree", () => {
 
 		expect(assessment.blocksMutation).toBe(false);
 		expect(assessment.blockingEntries).toEqual([]);
+	});
+
+	test("treats dirty files captured by a traceable parked stash as effectively in-scope", () => {
+		const parkedTargets = resolveParkedWorkflowTargets(
+			[".pi/extensions/helmsman-context.ts"],
+			"stash@{0}\tOn main: pi-helmsman-l81 / helmsman dirty-worktree park",
+			[".pi/extensions/helmsman-context.ts", ".pi/extensions/helmsman-context/parking.ts"].join("\n"),
+		).targetFiles;
+		const assessment = assessDirtyWorktree(
+			[" M .pi/extensions/helmsman-context.ts", "?? .pi/extensions/helmsman-context/parking.ts"].join("\n"),
+			parkedTargets,
+		);
+
+		expect(assessment.blocksMutation).toBe(false);
+		expect(assessment.inScopeEntries.map((entry) => entry.path)).toEqual([
+			".pi/extensions/helmsman-context.ts",
+			".pi/extensions/helmsman-context/parking.ts",
+		]);
+		expect(assessment.blockingEntries).toEqual([]);
+	});
+
+	test("still blocks truly unrelated dirty paths even when parked stash targets are present", () => {
+		const parkedTargets = resolveParkedWorkflowTargets(
+			[".pi/extensions/helmsman-context.ts"],
+			"stash@{0}\tOn main: pi-helmsman-l81 / helmsman dirty-worktree park",
+			[".pi/extensions/helmsman-context.ts", ".pi/extensions/helmsman-context/parking.ts"].join("\n"),
+		).targetFiles;
+		const assessment = assessDirtyWorktree(
+			[
+				" M .pi/extensions/helmsman-context.ts",
+				"?? .pi/extensions/helmsman-context/parking.ts",
+				" M .pi/extensions/smart-voice-notify.ts",
+			].join("\n"),
+			parkedTargets,
+		);
+
+		expect(assessment.blocksMutation).toBe(true);
+		expect(assessment.inScopeEntries.map((entry) => entry.path)).toEqual([
+			".pi/extensions/helmsman-context.ts",
+			".pi/extensions/helmsman-context/parking.ts",
+		]);
+		expect(assessment.blockingEntries.map((entry) => entry.path)).toEqual([".pi/extensions/smart-voice-notify.ts"]);
 	});
 
 	test("formats categorized dirty-path details for /context output", () => {

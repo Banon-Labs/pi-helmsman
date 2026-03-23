@@ -4,14 +4,17 @@ import {
 	advanceWorkflowPlanForStep,
 	buildVerificationFailureNote,
 	getBuildModePromptTransform,
+	getExecutableWorkflowPlan,
 	getExecutionBlockReason,
+	getExecutionStateBlockReason,
 	getVerificationFailureReason,
 	getWorkflowInputTransform,
 	isVerificationCommand,
 	isWorkflowContinuationIntent,
 	shouldReplanAfterExecutionBlock,
+	shouldReplanAfterExecutionStateBlock,
 } from "./execution";
-import type { WorkflowPlanState } from "./types";
+import type { WorkflowPlanState, WorkflowState } from "./types";
 
 function buildApprovedPlan(overrides: Partial<WorkflowPlanState> = {}): WorkflowPlanState {
 	return {
@@ -28,6 +31,18 @@ function buildApprovedPlan(overrides: Partial<WorkflowPlanState> = {}): Workflow
 			{ name: "Inspect", steps: ["Read files", "Summarize approach", "Prepare edit"] },
 			{ name: "Implement", steps: ["Update code", "Run tests", "Report results"] },
 		],
+		...overrides,
+	};
+}
+
+function buildWorkflowState(overrides: Partial<WorkflowState> = {}): WorkflowState {
+	const plan = buildApprovedPlan();
+	return {
+		mode: "plan",
+		plan,
+		generatedPlanText: "Goal: Execute approved workflow plan\nPlan:\nPhase 1: Inspect\n1. Read files",
+		adoptedPlan: plan,
+		adoptedPlanText: "Goal: Execute approved workflow plan\nPlan:\nPhase 1: Inspect\n1. Read files",
 		...overrides,
 	};
 }
@@ -84,6 +99,50 @@ describe("shouldReplanAfterExecutionBlock", () => {
 	test("requests replanning when an approved plan lacks executable structure", () => {
 		expect(shouldReplanAfterExecutionBlock(buildApprovedPlan({ phases: [] }), "run")).toBe(true);
 		expect(shouldReplanAfterExecutionBlock(buildApprovedPlan({ currentStep: null }), "step")).toBe(true);
+	});
+});
+
+describe("execution state gating", () => {
+	test("falls back to the approved legacy plan when no adopted plan exists", () => {
+		const state = buildWorkflowState({ adoptedPlan: undefined, adoptedPlanText: undefined });
+		expect(getExecutableWorkflowPlan(state)).toEqual(state.plan);
+		expect(getExecutionStateBlockReason(state, "step")).toBeUndefined();
+	});
+
+	test("blocks execution when neither adopted state nor an approved legacy plan exists", () => {
+		expect(
+			getExecutionStateBlockReason(
+				buildWorkflowState({ adoptedPlan: undefined, adoptedPlanText: undefined, plan: buildApprovedPlan({ approvalState: "draft" }) }),
+				"step",
+			),
+		).toBe("/step requires an adopted plan before execution can begin. Use /approve to adopt the exact current draft.");
+	});
+
+	test("delegates to the adopted plan approval check when adoption exists", () => {
+		expect(
+			getExecutionStateBlockReason(
+				buildWorkflowState({ adoptedPlan: buildApprovedPlan({ approvalState: "draft" }) }),
+				"run",
+			),
+		).toBe("/run requires an approved plan before execution can begin.");
+	});
+
+	test("does not request replanning when the only blocker is a missing adopted plan", () => {
+		expect(
+			shouldReplanAfterExecutionStateBlock(
+				buildWorkflowState({ adoptedPlan: undefined, adoptedPlanText: undefined, plan: buildApprovedPlan({ approvalState: "draft" }) }),
+				"step",
+			),
+		).toBe(false);
+	});
+
+	test("requests replanning when the adopted plan is approved but structurally invalid", () => {
+		expect(
+			shouldReplanAfterExecutionStateBlock(
+				buildWorkflowState({ adoptedPlan: buildApprovedPlan({ currentStep: null }) }),
+				"step",
+			),
+		).toBe(true);
 	});
 });
 

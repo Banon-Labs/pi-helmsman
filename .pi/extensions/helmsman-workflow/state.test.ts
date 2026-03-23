@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+	adoptWorkflowPlan,
 	createDefaultWorkflowState,
 	formatWorkflowStatus,
 	buildParkedWorkflowPlan,
@@ -35,6 +36,8 @@ describe("createDefaultWorkflowState", () => {
 				phases: [],
 			},
 			generatedPlanText: undefined,
+			adoptedPlan: undefined,
+			adoptedPlanText: undefined,
 		});
 	});
 });
@@ -62,6 +65,19 @@ describe("restoreWorkflowState", () => {
 						phases: [{ name: "Inspect", steps: ["Read files", "Summarize approach", "Prepare implementation"] }],
 					},
 					generatedPlanText: "Goal: ship workflow skeleton\nPlan:\nPhase 1: Inspect\n1. Read files",
+					adoptedPlan: {
+						goal: "ship workflow skeleton",
+						currentPhase: 1,
+						currentStep: 2,
+						targetFiles: [".pi/extensions/helmsman-workflow.ts"],
+						approvalState: "approved",
+						constraints: ["stay scoped"],
+						assumptions: ["existing scaffold is valid"],
+						verificationNotes: ["run focused tests"],
+						explorationCommands: ["rtk read ./.pi/extensions/helmsman-workflow.ts"],
+						phases: [{ name: "Inspect", steps: ["Read files", "Summarize approach", "Prepare implementation"] }],
+					},
+					adoptedPlanText: "Goal: ship workflow skeleton\nPlan:\nPhase 1: Inspect\n1. Read files",
 				},
 			},
 		]);
@@ -72,7 +88,9 @@ describe("restoreWorkflowState", () => {
 		expect(state.plan.currentStep).toBe(2);
 		expect(state.plan.targetFiles).toEqual([".pi/extensions/helmsman-workflow.ts"]);
 		expect(state.generatedPlanText).toBe("Goal: ship workflow skeleton\nPlan:\nPhase 1: Inspect\n1. Read files");
+		expect(state.adoptedPlanText).toBe("Goal: ship workflow skeleton\nPlan:\nPhase 1: Inspect\n1. Read files");
 		expect(state.plan.approvalState).toBe("approved");
+		expect(state.adoptedPlan?.approvalState).toBe("approved");
 		expect(state.plan.constraints).toEqual(["stay scoped"]);
 		expect(state.plan.explorationCommands).toEqual(["rtk read ./.pi/extensions/helmsman-workflow.ts"]);
 	});
@@ -135,10 +153,14 @@ describe("workflow state updates", () => {
 	test("stores and clears the exact generated approval document text separately from structured plan state", () => {
 		const state = updateWorkflowPlanScaffold(createDefaultWorkflowState(), "Inspect .pi/extensions/helmsman-workflow.ts");
 		const updated = updateWorkflowGeneratedPlanText(state, "Goal: exact generated doc\nPlan:\nPhase 1: Inspect\n1. Read the file");
-		const cleared = updateWorkflowGeneratedPlanText(updated, "   ");
+		const adopted = adoptWorkflowPlan(updated, updated.plan, updated.generatedPlanText!);
+		const cleared = updateWorkflowGeneratedPlanText(adopted, "   ");
 
 		expect(updated.generatedPlanText).toContain("Goal: exact generated doc");
+		expect(adopted.adoptedPlanText).toContain("Goal: exact generated doc");
 		expect(cleared.generatedPlanText).toBeUndefined();
+		expect(cleared.adoptedPlan).toBeUndefined();
+		expect(cleared.adoptedPlanText).toBeUndefined();
 	});
 
 	test("updates mode without losing scaffold", () => {
@@ -200,14 +222,22 @@ describe("workflow state updates", () => {
 			createDefaultWorkflowState(),
 			"Add planner flow in .pi/extensions/helmsman-workflow.ts and validate with testing/pi-cli-smoke.sh",
 		);
-		const approved = updateWorkflowApprovalState(planned, "approved");
+		const adopted = adoptWorkflowPlan(
+			planned,
+			{ ...planned.plan, approvalState: "draft" },
+			"Goal: Add planner flow in .pi/extensions/helmsman-workflow.ts\nPlan:\nPhase 1: Inspect\n1. Read files",
+		);
+		const approved = updateWorkflowApprovalState(adopted, "approved");
 		const draftAgain = updateWorkflowApprovalState(approved, "draft");
 
 		expect(approved.plan.approvalState).toBe("approved");
+		expect(approved.adoptedPlan?.approvalState).toBe("approved");
 		expect(approved.plan.goal).toBe(planned.plan.goal);
 		expect(approved.plan.targetFiles).toEqual(planned.plan.targetFiles);
 		expect(draftAgain.plan.approvalState).toBe("draft");
 		expect(draftAgain.plan.phases).toEqual(planned.plan.phases);
+		expect(draftAgain.adoptedPlan).toBeUndefined();
+		expect(draftAgain.adoptedPlanText).toBeUndefined();
 	});
 
 	test("merges parsed plan output without dropping prior scaffold detail when sections are omitted", () => {
@@ -339,6 +369,7 @@ describe("formatWorkflowStatus", () => {
 		expect(output).toContain("Read-only exploration commands: none");
 		expect(output).toContain("Phases: none");
 		expect(output).toContain("Approval: draft");
+		expect(output).toContain("Adopted plan: no");
 	});
 
 	test("renders off mode explicitly", () => {
@@ -365,6 +396,19 @@ describe("formatWorkflowStatus", () => {
 				explorationCommands: ["rtk read ./.pi/extensions/helmsman-workflow.ts"],
 				phases: [{ name: "Implement", steps: ["Update code", "Run tests", "Smoke validate"] }],
 			},
+			adoptedPlan: {
+				goal: "finish workflow skeleton",
+				currentPhase: 1,
+				currentStep: 3,
+				targetFiles: [".pi/extensions/helmsman-workflow.ts", ".pi/extensions/helmsman-workflow/state.ts"],
+				approvalState: "approved",
+				constraints: ["stay scoped"],
+				assumptions: ["status plumbing is already present"],
+				verificationNotes: ["run bun test"],
+				explorationCommands: ["rtk read ./.pi/extensions/helmsman-workflow.ts"],
+				phases: [{ name: "Implement", steps: ["Update code", "Run tests", "Smoke validate"] }],
+			},
+			adoptedPlanText: "Goal: finish workflow skeleton\nPlan:\nPhase 1: Implement\n1. Update code",
 		});
 
 		expect(output).toContain("Mode: build");
@@ -377,5 +421,6 @@ describe("formatWorkflowStatus", () => {
 		expect(output).toContain("- rtk read ./.pi/extensions/helmsman-workflow.ts");
 		expect(output).toContain("Phase 1: Implement");
 		expect(output).toContain("Approval: approved");
+		expect(output).toContain("Adopted plan: yes");
 	});
 });

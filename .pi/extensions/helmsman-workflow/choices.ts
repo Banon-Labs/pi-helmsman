@@ -1,4 +1,5 @@
 export type ForcedChoiceResult = { kind: "first" | "second" } | { kind: "other"; text: string } | { kind: "other-empty" };
+export type ForcedChoiceOtherFollowUpResult = { kind: "other"; text: string } | { kind: "reprompt" } | { kind: "cancel" };
 
 export function resolveForcedChoiceSelection(
 	selected: string | undefined,
@@ -13,4 +14,10 @@ export function resolveForcedChoiceSelection(
 	if (selected === choices[0]) return { kind: "first" };
 	if (selected === choices[1]) return { kind: "second" };
 	return undefined;
+}
+
+export function resolveForcedChoiceOtherFollowUp(otherText: string | undefined, blankAttempt: number): ForcedChoiceOtherFollowUpResult {
+	const text = otherText?.trim() ?? "";
+	if (text) return { kind: "other", text };
+	return blankAttempt === 0 ? { kind: "reprompt" } : { kind: "cancel" };
 }

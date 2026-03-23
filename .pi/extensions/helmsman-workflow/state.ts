@@ -12,22 +12,43 @@ import { preferRtkReadOnlyCommands } from "../rtk-first/tools";
 
 export const WORKFLOW_STATE_CUSTOM_TYPE = "helmsman-workflow-state";
 
+function buildDefaultWorkflowPlanState(): WorkflowPlanState {
+	return {
+		goal: "",
+		currentPhase: null,
+		currentStep: null,
+		targetFiles: [],
+		approvalState: "draft",
+		constraints: [],
+		assumptions: [],
+		verificationNotes: [],
+		explorationCommands: [],
+		phases: [],
+	};
+}
+
 export function createDefaultWorkflowState(): WorkflowState {
 	return {
 		mode: "plan",
-		plan: {
-			goal: "",
-			currentPhase: null,
-			currentStep: null,
-			targetFiles: [],
-			approvalState: "draft",
-			constraints: [],
-			assumptions: [],
-			verificationNotes: [],
-			explorationCommands: [],
-			phases: [],
-		},
+		plan: buildDefaultWorkflowPlanState(),
 		generatedPlanText: undefined,
+		adoptedPlan: undefined,
+		adoptedPlanText: undefined,
+	};
+}
+
+function restoreWorkflowPlanState(plan: Partial<WorkflowPlanState> | undefined, defaults: WorkflowPlanState): WorkflowPlanState {
+	return {
+		goal: plan?.goal ?? defaults.goal,
+		currentPhase: plan?.currentPhase ?? defaults.currentPhase,
+		currentStep: plan?.currentStep ?? defaults.currentStep,
+		targetFiles: plan?.targetFiles ?? defaults.targetFiles,
+		approvalState: plan?.approvalState ?? defaults.approvalState,
+		constraints: plan?.constraints ?? defaults.constraints,
+		assumptions: plan?.assumptions ?? defaults.assumptions,
+		verificationNotes: plan?.verificationNotes ?? defaults.verificationNotes,
+		explorationCommands: plan?.explorationCommands ?? defaults.explorationCommands,
+		phases: plan?.phases ?? defaults.phases,
 	};
 }
 
@@ -41,19 +62,10 @@ export function restoreWorkflowState(entries: CustomStateEntryLike[]): WorkflowS
 
 	return {
 		mode: latest.data.mode ?? defaults.mode,
-		plan: {
-			goal: latest.data.plan?.goal ?? defaults.plan.goal,
-			currentPhase: latest.data.plan?.currentPhase ?? defaults.plan.currentPhase,
-			currentStep: latest.data.plan?.currentStep ?? defaults.plan.currentStep,
-			targetFiles: latest.data.plan?.targetFiles ?? defaults.plan.targetFiles,
-			approvalState: latest.data.plan?.approvalState ?? defaults.plan.approvalState,
-			constraints: latest.data.plan?.constraints ?? defaults.plan.constraints,
-			assumptions: latest.data.plan?.assumptions ?? defaults.plan.assumptions,
-			verificationNotes: latest.data.plan?.verificationNotes ?? defaults.plan.verificationNotes,
-			explorationCommands: latest.data.plan?.explorationCommands ?? defaults.plan.explorationCommands,
-			phases: latest.data.plan?.phases ?? defaults.plan.phases,
-		},
+		plan: restoreWorkflowPlanState(latest.data.plan, defaults.plan),
 		generatedPlanText: latest.data.generatedPlanText ?? defaults.generatedPlanText,
+		adoptedPlan: latest.data.adoptedPlan ? restoreWorkflowPlanState(latest.data.adoptedPlan, defaults.plan) : defaults.adoptedPlan,
+		adoptedPlanText: latest.data.adoptedPlanText ?? defaults.adoptedPlanText,
 	};
 }
 
@@ -62,12 +74,30 @@ export function updateWorkflowMode(state: WorkflowState, mode: WorkflowMode): Wo
 }
 
 export function updateWorkflowApprovalState(state: WorkflowState, approvalState: WorkflowApprovalState): WorkflowState {
+	if (approvalState === "draft") {
+		return {
+			...state,
+			plan: {
+				...state.plan,
+				approvalState,
+			},
+			adoptedPlan: undefined,
+			adoptedPlanText: undefined,
+		};
+	}
+
 	return {
 		...state,
 		plan: {
 			...state.plan,
 			approvalState,
 		},
+		adoptedPlan: state.adoptedPlan
+			? {
+				...state.adoptedPlan,
+				approvalState,
+			}
+			: undefined,
 	};
 }
 
@@ -79,6 +109,8 @@ export function updateWorkflowPlanGoal(state: WorkflowState, goal: string): Work
 			goal: goal.trim(),
 			approvalState: "draft",
 		},
+		adoptedPlan: undefined,
+		adoptedPlanText: undefined,
 	};
 }
 
@@ -101,6 +133,8 @@ export function updateWorkflowPlanScaffold(state: WorkflowState, goal: string): 
 	return {
 		...state,
 		plan: sanitizeWorkflowPlanState(buildPlanScaffoldFromGoal(goal)),
+		adoptedPlan: undefined,
+		adoptedPlanText: undefined,
 	};
 }
 
@@ -115,6 +149,19 @@ export function updateWorkflowGeneratedPlanText(state: WorkflowState, generatedP
 	return {
 		...state,
 		generatedPlanText: trimmed ? generatedPlanText : undefined,
+		adoptedPlan: undefined,
+		adoptedPlanText: undefined,
+	};
+}
+
+export function adoptWorkflowPlan(state: WorkflowState, plan: WorkflowPlanState, adoptedPlanText: string): WorkflowState {
+	const trimmed = adoptedPlanText.trim();
+	return {
+		...state,
+		plan,
+		generatedPlanText: trimmed || state.generatedPlanText,
+		adoptedPlan: plan,
+		adoptedPlanText: trimmed || state.adoptedPlanText,
 	};
 }
 
@@ -248,6 +295,7 @@ export function formatWorkflowStatus(state: WorkflowState, plannerRuntime?: stri
 		`Phases: ${state.plan.phases.length > 0 ? "" : "none"}`,
 		state.plan.phases.length > 0 ? phaseLines : undefined,
 		`Approval: ${state.plan.approvalState}`,
+		`Adopted plan: ${state.adoptedPlan ? "yes" : "no"}`,
 	]
 		.filter(Boolean)
 		.join("\n");

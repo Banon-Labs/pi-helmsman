@@ -29,10 +29,11 @@ import {
 	advanceWorkflowPlanForRun,
 	advanceWorkflowPlanForStep,
 	buildVerificationFailureNote,
-	getExecutionBlockReason,
+	getExecutableWorkflowPlan,
+	getExecutionStateBlockReason,
 	getWorkflowInputTransform,
 	getVerificationFailureReason,
-	shouldReplanAfterExecutionBlock,
+	shouldReplanAfterExecutionStateBlock,
 } from "./helmsman-workflow/execution.js";
 import { parseWorkflowPlanFromText } from "./helmsman-workflow/parse-plan.js";
 import { describePlannerRuntime } from "./helmsman-workflow/runtime.js";
@@ -43,6 +44,7 @@ import {
 	getUnexpectedFileSpreadReason,
 } from "./helmsman-workflow/safety.js";
 import {
+	adoptWorkflowPlan,
 	createDefaultWorkflowState,
 	formatWorkflowStatus,
 	mergeWorkflowPlanState,
@@ -96,6 +98,8 @@ function persistState(pi: ExtensionAPI, state: WorkflowState): void {
 		mode: state.mode,
 		plan: state.plan,
 		generatedPlanText: state.generatedPlanText,
+		adoptedPlan: state.adoptedPlan,
+		adoptedPlanText: state.adoptedPlanText,
 	});
 }
 
@@ -152,6 +156,18 @@ function showWorkflowPlanDraft(pi: ExtensionAPI, state: WorkflowState): void {
 		details: state.plan,
 		display: true,
 	});
+}
+
+function adoptCurrentWorkflowDraft(state: WorkflowState): WorkflowState | undefined {
+	const adoptedPlanText = resolveWorkflowPlanDocumentText(state).trim();
+	if (!adoptedPlanText) return undefined;
+	const parsedPlan = parseWorkflowPlanFromText(adoptedPlanText);
+	if (!parsedPlan) return undefined;
+	const adoptedPlan = sanitizeWorkflowPlanState({
+		...parsedPlan.plan,
+		approvalState: "draft",
+	});
+	return adoptWorkflowPlan(state, adoptedPlan, adoptedPlanText);
 }
 
 function speakWorkflowMilestoneWithWarning(
@@ -566,10 +582,13 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 
 		const parsedPlan = parseWorkflowPlanFromText(assistantText);
 		if (parsedPlan) {
-			workflowState = {
-				...updateWorkflowGeneratedPlanText(workflowState, assistantText),
-				plan: mergeWorkflowPlanState(workflowState.plan, parsedPlan),
-			};
+			workflowState = updateWorkflowApprovalState(
+				{
+					...updateWorkflowGeneratedPlanText(workflowState, assistantText),
+					plan: mergeWorkflowPlanState(workflowState.plan, parsedPlan),
+				},
+				"draft",
+			);
 			persistState(pi, workflowState);
 		}
 
@@ -714,9 +733,9 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 	pi.registerCommand(STEP_COMMAND, {
 		description: "Advance one approved Helmsman step at a time",
 		handler: async (_args, ctx) => {
-			const blockedReason = getExecutionBlockReason(workflowState.plan, "step");
+			const blockedReason = getExecutionStateBlockReason(workflowState, "step");
 			if (blockedReason) {
-				if (shouldReplanAfterExecutionBlock(workflowState.plan, "step")) {
+				if (shouldReplanAfterExecutionStateBlock(workflowState, "step")) {
 					workflowState = updateWorkflowApprovalState(updateWorkflowMode(workflowState, "plan"), "draft");
 					persistState(pi, workflowState);
 					syncActiveTools(pi, workflowState.mode);
@@ -736,7 +755,9 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 					return;
 				}
 				ctx.ui.notify(buildApprovalRequiredNotice(blockedReason), "warning");
-				if (blockedReason.includes("approved plan")) speakWorkflowMilestoneWithWarning(ctx, "approval-required", ttsBackend);
+				if (blockedReason.includes("approved plan") || blockedReason.includes("adopted plan")) {
+					speakWorkflowMilestoneWithWarning(ctx, "approval-required", ttsBackend);
+				}
 				publishStatus(pi, workflowState, Boolean(ctx.model));
 				const approvalChoice = await selectWithOptionalOther(
 					ctx,
@@ -747,28 +768,37 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 				);
 				if (!approvalChoice) return;
 				if (approvalChoice.kind === "first") {
-					workflowState = updateWorkflowApprovalState(workflowState, "approved");
-					persistState(pi, workflowState);
-					updateFooterStatus(ctx, workflowState);
-					ctx.ui.notify("Plan approved. Continuing with /step.", "info");
-					publishStatus(pi, workflowState, Boolean(ctx.model));
-				} else {
-					workflowState = updateWorkflowApprovalState(updateWorkflowMode(workflowState, "plan"), "draft");
+					const adoptedState = adoptCurrentWorkflowDraft(workflowState);
+					if (!adoptedState) {
+						ctx.ui.notify("Helmsman could not adopt the current draft for execution because the visible plan is not parser-safe structured output.", "warning");
+						publishStatus(pi, workflowState, Boolean(ctx.model));
+						return;
+					}
+					workflowState = updateWorkflowApprovalState(adoptedState, "approved");
 					persistState(pi, workflowState);
 					syncActiveTools(pi, workflowState.mode);
 					updateFooterStatus(ctx, workflowState);
+					ctx.ui.notify("Plan adopted and approved. Run /step again when you want to advance execution.", "info");
 					publishStatus(pi, workflowState, Boolean(ctx.model));
-					if (approvalChoice.kind === "second") showWorkflowPlanDraft(pi, workflowState);
-					else if (approvalChoice.text) pi.sendUserMessage(approvalChoice.text);
 					return;
 				}
+				workflowState = updateWorkflowApprovalState(updateWorkflowMode(workflowState, "plan"), "draft");
+				persistState(pi, workflowState);
+				syncActiveTools(pi, workflowState.mode);
+				updateFooterStatus(ctx, workflowState);
+				publishStatus(pi, workflowState, Boolean(ctx.model));
+				if (approvalChoice.kind === "second") showWorkflowPlanDraft(pi, workflowState);
+				else if (approvalChoice.text) pi.sendUserMessage(approvalChoice.text);
+				return;
 			}
 
-			const result = advanceWorkflowPlanForStep(workflowState.plan);
+			const result = advanceWorkflowPlanForStep(getExecutableWorkflowPlan(workflowState)!);
 			workflowState = {
 				...workflowState,
 				mode: "build",
 				plan: result.plan,
+				adoptedPlan: result.plan,
+				adoptedPlanText: workflowState.adoptedPlanText ?? resolveWorkflowPlanDocumentText(workflowState),
 			};
 			persistState(pi, workflowState);
 			syncActiveTools(pi, workflowState.mode);
@@ -782,9 +812,9 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 	pi.registerCommand(RUN_COMMAND, {
 		description: "Advance the current approved Helmsman phase",
 		handler: async (_args, ctx) => {
-			const blockedReason = getExecutionBlockReason(workflowState.plan, "run");
+			const blockedReason = getExecutionStateBlockReason(workflowState, "run");
 			if (blockedReason) {
-				if (shouldReplanAfterExecutionBlock(workflowState.plan, "run")) {
+				if (shouldReplanAfterExecutionStateBlock(workflowState, "run")) {
 					workflowState = updateWorkflowApprovalState(updateWorkflowMode(workflowState, "plan"), "draft");
 					persistState(pi, workflowState);
 					syncActiveTools(pi, workflowState.mode);
@@ -804,7 +834,9 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 					return;
 				}
 				ctx.ui.notify(buildApprovalRequiredNotice(blockedReason), "warning");
-				if (blockedReason.includes("approved plan")) speakWorkflowMilestoneWithWarning(ctx, "approval-required", ttsBackend);
+				if (blockedReason.includes("approved plan") || blockedReason.includes("adopted plan")) {
+					speakWorkflowMilestoneWithWarning(ctx, "approval-required", ttsBackend);
+				}
 				publishStatus(pi, workflowState, Boolean(ctx.model));
 				const approvalChoice = await selectWithOptionalOther(
 					ctx,
@@ -815,28 +847,37 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 				);
 				if (!approvalChoice) return;
 				if (approvalChoice.kind === "first") {
-					workflowState = updateWorkflowApprovalState(workflowState, "approved");
-					persistState(pi, workflowState);
-					updateFooterStatus(ctx, workflowState);
-					ctx.ui.notify("Plan approved. Continuing with /run.", "info");
-					publishStatus(pi, workflowState, Boolean(ctx.model));
-				} else {
-					workflowState = updateWorkflowApprovalState(updateWorkflowMode(workflowState, "plan"), "draft");
+					const adoptedState = adoptCurrentWorkflowDraft(workflowState);
+					if (!adoptedState) {
+						ctx.ui.notify("Helmsman could not adopt the current draft for execution because the visible plan is not parser-safe structured output.", "warning");
+						publishStatus(pi, workflowState, Boolean(ctx.model));
+						return;
+					}
+					workflowState = updateWorkflowApprovalState(adoptedState, "approved");
 					persistState(pi, workflowState);
 					syncActiveTools(pi, workflowState.mode);
 					updateFooterStatus(ctx, workflowState);
+					ctx.ui.notify("Plan adopted and approved. Run /run again when you want to advance execution.", "info");
 					publishStatus(pi, workflowState, Boolean(ctx.model));
-					if (approvalChoice.kind === "second") showWorkflowPlanDraft(pi, workflowState);
-					else if (approvalChoice.text) pi.sendUserMessage(approvalChoice.text);
 					return;
 				}
+				workflowState = updateWorkflowApprovalState(updateWorkflowMode(workflowState, "plan"), "draft");
+				persistState(pi, workflowState);
+				syncActiveTools(pi, workflowState.mode);
+				updateFooterStatus(ctx, workflowState);
+				publishStatus(pi, workflowState, Boolean(ctx.model));
+				if (approvalChoice.kind === "second") showWorkflowPlanDraft(pi, workflowState);
+				else if (approvalChoice.text) pi.sendUserMessage(approvalChoice.text);
+				return;
 			}
 
-			const result = advanceWorkflowPlanForRun(workflowState.plan);
+			const result = advanceWorkflowPlanForRun(getExecutableWorkflowPlan(workflowState)!);
 			workflowState = {
 				...workflowState,
 				mode: "build",
 				plan: result.plan,
+				adoptedPlan: result.plan,
+				adoptedPlanText: workflowState.adoptedPlanText ?? resolveWorkflowPlanDocumentText(workflowState),
 			};
 			persistState(pi, workflowState);
 			syncActiveTools(pi, workflowState.mode);
@@ -860,10 +901,21 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 			const ensuredGeneratedPlanState = workflowState.generatedPlanText?.trim()
 				? workflowState
 				: updateWorkflowGeneratedPlanText(workflowState, renderWorkflowPlanDraft(workflowState.plan));
-			workflowState = updateWorkflowApprovalState(ensuredGeneratedPlanState, nextApproval);
+			if (nextApproval === "approved") {
+				const adoptedState = adoptCurrentWorkflowDraft(ensuredGeneratedPlanState);
+				if (!adoptedState) {
+					ctx.ui.notify("Helmsman could not approve the current draft because the visible plan is not parser-safe structured output.", "warning");
+					publishStatus(pi, workflowState, Boolean(ctx.model));
+					return;
+				}
+				workflowState = updateWorkflowMode(updateWorkflowApprovalState(adoptedState, "approved"), "build");
+			} else {
+				workflowState = updateWorkflowApprovalState(ensuredGeneratedPlanState, nextApproval);
+			}
 			persistState(pi, workflowState);
+			syncActiveTools(pi, workflowState.mode);
 			updateFooterStatus(ctx, workflowState);
-			ctx.ui.notify(`Plan approval set to ${nextApproval}`, "info");
+			ctx.ui.notify(nextApproval === "approved" ? "Plan approval set to approved and workflow mode set to build" : `Plan approval set to ${nextApproval}`, "info");
 			publishStatus(pi, workflowState, Boolean(ctx.model));
 		},
 	});
@@ -887,6 +939,8 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 						mode: workflowState.mode,
 						plan: workflowState.plan,
 						generatedPlanText: workflowState.generatedPlanText,
+						adoptedPlan: workflowState.adoptedPlan,
+						adoptedPlanText: workflowState.adoptedPlanText,
 					});
 					sessionManager.appendSessionInfo(sessionName);
 				},

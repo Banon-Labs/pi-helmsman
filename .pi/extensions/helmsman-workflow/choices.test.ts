@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolveForcedChoiceSelection } from "./choices";
+import { resolveForcedChoiceOtherFollowUp, resolveForcedChoiceSelection } from "./choices";
 
 const CHOICES = ["First", "Second", "Something else"] as const;
 
@@ -23,5 +23,22 @@ describe("resolveForcedChoiceSelection", () => {
 	test("returns undefined for cancellation or unexpected selections", () => {
 		expect(resolveForcedChoiceSelection(undefined, CHOICES)).toBeUndefined();
 		expect(resolveForcedChoiceSelection("Unexpected", CHOICES)).toBeUndefined();
+	});
+});
+
+describe("resolveForcedChoiceOtherFollowUp", () => {
+	test("keeps typed follow-up after trimming", () => {
+		expect(resolveForcedChoiceOtherFollowUp("  use the parser path  ", 0)).toEqual({
+			kind: "other",
+			text: "use the parser path",
+		});
+	});
+
+	test("reprompts on the first blank follow-up", () => {
+		expect(resolveForcedChoiceOtherFollowUp("   ", 0)).toEqual({ kind: "reprompt" });
+	});
+
+	test("cancels on the second blank follow-up", () => {
+		expect(resolveForcedChoiceOtherFollowUp(undefined, 1)).toEqual({ kind: "cancel" });
 	});
 });

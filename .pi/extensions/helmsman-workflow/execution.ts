@@ -1,4 +1,4 @@
-import type { WorkflowMode, WorkflowPlanState } from "./types";
+import type { WorkflowMode, WorkflowPlanState, WorkflowState } from "./types";
 
 export const CONTEXT_CONTINUATION_ROUTE_MARKER = "[Helmsman continuation route]";
 
@@ -80,6 +80,26 @@ export function shouldReplanAfterExecutionBlock(
 	scope: WorkflowExecutionScope,
 ): boolean {
 	return Boolean(getExecutionBlockReason(plan, scope)) && plan.approvalState === "approved";
+}
+
+export function getExecutableWorkflowPlan(state: WorkflowState): WorkflowPlanState | undefined {
+	if (state.adoptedPlan && state.adoptedPlanText?.trim()) return state.adoptedPlan;
+	if (state.plan.approvalState === "approved") return state.plan;
+	return undefined;
+}
+
+export function getExecutionStateBlockReason(state: WorkflowState, scope: WorkflowExecutionScope): string | undefined {
+	const executablePlan = getExecutableWorkflowPlan(state);
+	if (!executablePlan) {
+		return `/${scope} requires an adopted plan before execution can begin. Use /approve to adopt the exact current draft.`;
+	}
+	return getExecutionBlockReason(executablePlan, scope);
+}
+
+export function shouldReplanAfterExecutionStateBlock(state: WorkflowState, scope: WorkflowExecutionScope): boolean {
+	const executablePlan = getExecutableWorkflowPlan(state);
+	if (!executablePlan) return false;
+	return shouldReplanAfterExecutionBlock(executablePlan, scope);
 }
 
 export function advanceWorkflowPlanForStep(plan: WorkflowPlanState): WorkflowExecutionResult {

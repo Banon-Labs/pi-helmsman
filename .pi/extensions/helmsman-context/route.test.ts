@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { CONTINUATION_ROUTE_MARKER, formatRoutePlan } from "../helmsman-context.ts";
 import { buildContextRoutePlan } from "./route.ts";
 import type { ContextAssessment } from "./types.ts";
 
@@ -27,6 +28,15 @@ const mismatchAssessment: ContextAssessment = {
 	summary: "Context mismatch: requested repo appears to be pi-mono",
 	candidates: [],
 };
+
+describe("formatRoutePlan", () => {
+	test("marks routed continuation prompts so workflow build mode can resume via /step", () => {
+		const rendered = formatRoutePlan("cd /tmp/target && pi --fork /tmp/session.jsonl", "Continue this task in the target repo.");
+
+		expect(rendered).toContain(CONTINUATION_ROUTE_MARKER);
+		expect(rendered).toContain("Continue this task in the target repo.");
+	});
+});
 
 describe("buildContextRoutePlan", () => {
 	test("builds an explicit switch plan with fork command and traceability prompt", () => {

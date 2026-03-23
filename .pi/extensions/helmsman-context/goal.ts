@@ -1,6 +1,11 @@
+export function isWorkflowContinuationIntent(text: string): boolean {
+	const normalized = text.trim().toLowerCase();
+	return normalized === "continue" || normalized === "engage";
+}
+
 export function shouldTrackAsGoal(text: string): boolean {
 	const trimmed = text.trim();
-	return trimmed.length > 0 && !trimmed.startsWith("/");
+	return trimmed.length > 0 && !trimmed.startsWith("/") && !isWorkflowContinuationIntent(trimmed);
 }
 
 export function chooseRouteGoal(commandArgs: string, lastGoalText: string, lastInputText: string): string {

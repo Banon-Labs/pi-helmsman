@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { chooseRouteGoal, shouldTrackAsGoal } from "./goal";
+import { chooseRouteGoal, isWorkflowContinuationIntent, shouldTrackAsGoal } from "./goal";
+
+describe("isWorkflowContinuationIntent", () => {
+	test("recognizes conservative workflow continuation prompts", () => {
+		expect(isWorkflowContinuationIntent("continue")).toBe(true);
+		expect(isWorkflowContinuationIntent(" Engage ")).toBe(true);
+		expect(isWorkflowContinuationIntent("continue current task")).toBe(false);
+	});
+});
 
 describe("shouldTrackAsGoal", () => {
 	test("tracks normal user requests", () => {
@@ -9,6 +17,11 @@ describe("shouldTrackAsGoal", () => {
 	test("does not track slash commands as goals", () => {
 		expect(shouldTrackAsGoal("/context pi-mono")).toBe(false);
 		expect(shouldTrackAsGoal("/context-switch pi-mono")).toBe(false);
+	});
+
+	test("does not track workflow continuation prompts as fresh goals", () => {
+		expect(shouldTrackAsGoal("continue")).toBe(false);
+		expect(shouldTrackAsGoal("engage")).toBe(false);
 	});
 });
 

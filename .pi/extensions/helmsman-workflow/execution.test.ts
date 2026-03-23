@@ -3,9 +3,12 @@ import {
 	advanceWorkflowPlanForRun,
 	advanceWorkflowPlanForStep,
 	buildVerificationFailureNote,
+	getBuildModePromptTransform,
 	getExecutionBlockReason,
 	getVerificationFailureReason,
+	getWorkflowInputTransform,
 	isVerificationCommand,
+	isWorkflowContinuationIntent,
 	shouldReplanAfterExecutionBlock,
 } from "./execution";
 import type { WorkflowPlanState } from "./types";
@@ -28,6 +31,31 @@ function buildApprovedPlan(overrides: Partial<WorkflowPlanState> = {}): Workflow
 		...overrides,
 	};
 }
+
+describe("build-mode continuation routing", () => {
+	test("recognizes conservative workflow continuation prompts", () => {
+		expect(isWorkflowContinuationIntent("continue")).toBe(true);
+		expect(isWorkflowContinuationIntent(" Engage ")).toBe(true);
+		expect(isWorkflowContinuationIntent("continue current task")).toBe(false);
+	});
+
+	test("rewrites continuation prompts to the guarded step command", () => {
+		expect(getBuildModePromptTransform("continue")).toBe("/step");
+		expect(getBuildModePromptTransform("engage")).toBe("/step");
+		expect(getBuildModePromptTransform("inspect the repo")).toBeUndefined();
+	});
+
+	test("reroutes context-switch continuation prompts back through /step in build mode", () => {
+		const routedPrompt = [
+			"[Helmsman continuation route]",
+			"Continue this task in the target repo selected by Helmsman context routing.",
+			"Originating goal: inspect pi-mono and implement the change there",
+		].join("\n");
+
+		expect(getWorkflowInputTransform("build", routedPrompt)).toBe("/step");
+		expect(getWorkflowInputTransform("plan", routedPrompt)).toBeUndefined();
+	});
+});
 
 describe("getExecutionBlockReason", () => {
 	test("blocks step execution when plan is still draft", () => {

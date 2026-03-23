@@ -24,8 +24,8 @@ import {
 	advanceWorkflowPlanForRun,
 	advanceWorkflowPlanForStep,
 	buildVerificationFailureNote,
-	getBuildModePromptTransform,
 	getExecutionBlockReason,
+	getWorkflowInputTransform,
 	getVerificationFailureReason,
 	shouldReplanAfterExecutionBlock,
 } from "./helmsman-workflow/execution.js";
@@ -78,7 +78,6 @@ const MODE_COMMAND = "mode";
 const STATUS_COMMAND = "status";
 const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "fetch_reference", "fetch_web", "search_web", "questionnaire"];
 const BUILD_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "edit", "write", "fetch_reference", "fetch_web", "search_web"];
-const CONTEXT_CONTINUATION_ROUTE_MARKER = "[Helmsman continuation route]";
 
 function updateFooterStatus(ctx: ExtensionCommandContext | ExtensionContext, state: WorkflowState): void {
 	const tone = state.mode === "plan" ? "warning" : state.mode === "off" ? "success" : "accent";
@@ -143,11 +142,6 @@ function showWorkflowPlanDraft(pi: ExtensionAPI, plan: WorkflowState["plan"]): v
 		details: plan,
 		display: true,
 	});
-}
-
-export function getWorkflowInputTransform(mode: WorkflowMode, text: string): string | undefined {
-	if (mode !== "build") return undefined;
-	return getBuildModePromptTransform(text) ?? (text.includes(CONTEXT_CONTINUATION_ROUTE_MARKER) ? "/step" : undefined);
 }
 
 function speakWorkflowMilestoneWithWarning(

@@ -1,4 +1,6 @@
-import type { WorkflowPlanState } from "./types";
+import type { WorkflowMode, WorkflowPlanState } from "./types";
+
+export const CONTEXT_CONTINUATION_ROUTE_MARKER = "[Helmsman continuation route]";
 
 export type WorkflowExecutionScope = "step" | "run";
 
@@ -37,6 +39,20 @@ export function getVerificationFailureReason(command: string): string | undefine
 
 export function buildVerificationFailureNote(command: string): string {
 	return `Verification failed: ${command.trim()}`;
+}
+
+export function isWorkflowContinuationIntent(text: string): boolean {
+	const normalized = text.trim().toLowerCase();
+	return normalized === "continue" || normalized === "engage";
+}
+
+export function getBuildModePromptTransform(text: string): string | undefined {
+	return isWorkflowContinuationIntent(text) ? "/step" : undefined;
+}
+
+export function getWorkflowInputTransform(mode: WorkflowMode, text: string): string | undefined {
+	if (mode !== "build") return undefined;
+	return getBuildModePromptTransform(text) ?? (text.includes(CONTEXT_CONTINUATION_ROUTE_MARKER) ? "/step" : undefined);
 }
 
 export function getExecutionBlockReason(

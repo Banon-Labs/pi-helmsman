@@ -72,6 +72,18 @@ describe("buildWorkflowHandoffPrompt", () => {
 		expect(output).toContain("Run /status to render the persisted Helmsman workflow state");
 		expect(output).toContain("Use /resume to jump back to the previous session");
 	});
+
+	test("includes dirty-worktree details when provided", () => {
+		const output = buildWorkflowHandoffPrompt(
+			buildState(),
+			"Finish validation and summarize evidence",
+			"Dirty worktree: 2 unrelated, 1 in-scope, 0 transient path(s).\n\nBlocking paths:\n- src/unrelated.ts (tracked, M)",
+		);
+
+		expect(output).toContain("### Dirty Worktree");
+		expect(output).toContain("Dirty worktree: 2 unrelated, 1 in-scope, 0 transient path(s).");
+		expect(output).toContain("Blocking paths:");
+	});
 });
 
 describe("buildWorkflowHandoffSessionName", () => {

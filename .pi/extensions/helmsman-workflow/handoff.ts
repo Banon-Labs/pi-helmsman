@@ -28,7 +28,7 @@ export function resolveWorkflowHandoffGoal(state: WorkflowState, requestedGoal: 
 	return "Continue the current Helmsman workflow in a fresh focused session.";
 }
 
-export function buildWorkflowHandoffPrompt(state: WorkflowState, requestedGoal: string): string {
+export function buildWorkflowHandoffPrompt(state: WorkflowState, requestedGoal: string, dirtyWorktreeDetails?: string): string {
 	const nextTask = resolveWorkflowHandoffGoal(state, requestedGoal);
 
 	return [
@@ -50,6 +50,9 @@ export function buildWorkflowHandoffPrompt(state: WorkflowState, requestedGoal: 
 		"### Verification Notes",
 		formatList(state.plan.verificationNotes),
 		"",
+		dirtyWorktreeDetails ? "### Dirty Worktree" : undefined,
+		dirtyWorktreeDetails,
+		dirtyWorktreeDetails ? "" : undefined,
 		"### Planned Phases",
 		formatPhases(state.plan),
 		"",

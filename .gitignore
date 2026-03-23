@@ -10,3 +10,7 @@
 
 # Beads runtime state (per-machine, not canonical project data)
 .beads/push-state.json
+
+# Local transient policy/plugin artifacts
+.cupcake/
+.opencode/

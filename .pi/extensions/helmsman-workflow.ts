@@ -1,6 +1,8 @@
 import { complete, type AssistantMessage, type TextContent, type UserMessage } from "@mariozechner/pi-ai";
 import { BorderedLoader, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { buildBeadsDraftOutput, parseBeadsDraftArgs } from "./helmsman-workflow/beads.js";
+import { assessDirtyWorktree, formatDirtyWorktreeAssessment } from "./helmsman-context/dirty.js";
+import { findRepoRoot } from "./helmsman-context/filesystem.js";
 import {
 	buildClarifiedGoal,
 	getClarificationChoices,
@@ -185,6 +187,19 @@ function publishStatus(pi: ExtensionAPI, state: WorkflowState, hasModel: boolean
 		details: state,
 		display: true,
 	});
+}
+
+async function getDirtyWorktreeDetails(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext | ExtensionCommandContext,
+	targetFiles: string[],
+): Promise<string | undefined> {
+	const repoRoot = findRepoRoot(ctx.cwd);
+	if (!repoRoot) return undefined;
+	const result = await pi.exec("git", ["status", "--short", "--untracked-files=all"], { cwd: repoRoot });
+	const assessment = assessDirtyWorktree(result.stdout, targetFiles);
+	if (assessment.entries.length === 0) return undefined;
+	return formatDirtyWorktreeAssessment(assessment);
 }
 
 function isSlashCommand(text: string): boolean {
@@ -822,7 +837,8 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 			}
 
 			const parentSession = ctx.sessionManager.getSessionFile();
-			const promptDraft = buildWorkflowHandoffPrompt(workflowState, args);
+			const dirtyWorktreeDetails = await getDirtyWorktreeDetails(pi, ctx, workflowState.plan.targetFiles);
+			const promptDraft = buildWorkflowHandoffPrompt(workflowState, args, dirtyWorktreeDetails);
 			const sessionName = buildWorkflowHandoffSessionName(workflowState, args);
 			const result = await ctx.newSession({
 				parentSession,
@@ -876,6 +892,15 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 			updateFooterStatus(ctx, workflowState);
 			ctx.ui.notify(`Workflow mode: ${workflowState.mode}`, "info");
 			publishStatus(pi, workflowState, Boolean(ctx.model));
+			const dirtyWorktreeDetails = await getDirtyWorktreeDetails(pi, ctx, workflowState.plan.targetFiles);
+			if (dirtyWorktreeDetails) {
+				pi.sendMessage({
+					customType: `${CUSTOM_MESSAGE_TYPE}-dirty-worktree`,
+					content: `Dirty worktree:\n${dirtyWorktreeDetails}`,
+					details: { dirtyWorktreeDetails },
+					display: true,
+				});
+			}
 		},
 	});
 }

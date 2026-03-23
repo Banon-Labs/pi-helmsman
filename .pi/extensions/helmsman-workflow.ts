@@ -17,6 +17,7 @@ import {
 	buildCollaborativeReplanNotice,
 	buildPlanModeActivationNotice,
 	buildPlanModeSystemPrompt,
+	buildStrictStructuredPlanPrompt,
 	buildVerificationFailureNotice,
 	getApprovalRequiredChoices,
 	getCollaborativeReplanChoices,
@@ -239,7 +240,7 @@ const PLAN_COMMAND_SYSTEM_PROMPT = [
 	buildPlanModeSystemPrompt(),
 	"Base the plan on the user's stated goal and any scaffold context provided.",
 	"If target files are uncertain, leave them empty instead of guessing from slash-commands or abstract nouns.",
-	"Return only the structured draft plan with the required sections.",
+	buildStrictStructuredPlanPrompt(),
 ].join("\n");
 
 const REVIEW_COMMAND_SYSTEM_PROMPT = [

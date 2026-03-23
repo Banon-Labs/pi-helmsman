@@ -4,6 +4,7 @@ import {
 	buildCollaborativeReplanNotice,
 	buildPlanModeActivationNotice,
 	buildPlanModeSystemPrompt,
+	buildStrictStructuredPlanPrompt,
 	buildVerificationFailureNotice,
 	getApprovalRequiredChoices,
 	getCollaborativeReplanChoices,
@@ -18,6 +19,36 @@ describe("helmsman workflow voice helpers", () => {
 		expect(prompt).toContain("Surface assumptions and uncertainty plainly");
 		expect(prompt).toContain("fetch_web");
 		expect(prompt).toContain("search_web");
+		expect(prompt).toContain("Return only a strict Helmsman-compatible /plan string.");
+		expect(prompt).toContain("Goal:");
+		expect(prompt).toContain("Constraints:");
+		expect(prompt).toContain("Assumptions:");
+		expect(prompt).toContain("Target Files:");
+		expect(prompt).toContain("Current Phase:");
+		expect(prompt).toContain("Plan:");
+		expect(prompt).toContain("Verification Notes:");
+		expect(prompt).toContain("Approval State:");
+		expect(prompt).toContain("Do not add prose before or after the structured plan.");
+	});
+
+	test("strict structured plan prompt enumerates the required schema in order", () => {
+		const prompt = buildStrictStructuredPlanPrompt();
+		const expectedOrder = [
+			"Goal:",
+			"Constraints:",
+			"Assumptions:",
+			"Target Files:",
+			"Current Phase:",
+			"Plan:",
+			"Verification Notes:",
+			"Approval State:",
+		];
+		let lastIndex = -1;
+		for (const header of expectedOrder) {
+			const index = prompt.indexOf(header);
+			expect(index).toBeGreaterThan(lastIndex);
+			lastIndex = index;
+		}
 	});
 
 	test("activation notice emphasizes read-only behavior and clarification", () => {

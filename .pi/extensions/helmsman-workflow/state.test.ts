@@ -9,6 +9,7 @@ import {
 	parsePreHandoffReview,
 	restoreWorkflowState,
 	sanitizeWorkflowPlanState,
+	shouldPreserveApprovedExecutionAfterParsedMerge,
 	updateWorkflowGeneratedPlanText,
 	shouldRunPreHandoffReview,
 	updateWorkflowApprovalState,
@@ -238,6 +239,59 @@ describe("workflow state updates", () => {
 		expect(draftAgain.plan.phases).toEqual(planned.plan.phases);
 		expect(draftAgain.adoptedPlan).toBeUndefined();
 		expect(draftAgain.adoptedPlanText).toBeUndefined();
+	});
+
+	test("preserves approved execution when a parsed build-mode merge does not change the executable plan", () => {
+		const plan = updateWorkflowPlanScaffold(
+			createDefaultWorkflowState(),
+			"Inspect .pi/extensions/helmsman-workflow.ts and testing/pi-cli-smoke.sh",
+		).plan;
+		const state = {
+			mode: "build" as const,
+			plan: { ...plan, approvalState: "approved" as const },
+			generatedPlanText: "Goal: Inspect .pi/extensions/helmsman-workflow.ts and testing/pi-cli-smoke.sh",
+			adoptedPlan: { ...plan, approvalState: "approved" as const },
+			adoptedPlanText: "Goal: Inspect .pi/extensions/helmsman-workflow.ts and testing/pi-cli-smoke.sh",
+		};
+		const merged = mergeWorkflowPlanState(state.plan, {
+			plan: {
+				...state.plan,
+				approvalState: "draft",
+			},
+			present: {
+				goal: false,
+				currentPhase: false,
+				currentStep: false,
+				targetFiles: false,
+				approvalState: true,
+				constraints: false,
+				assumptions: false,
+				verificationNotes: false,
+				phases: false,
+			},
+		});
+
+		expect(shouldPreserveApprovedExecutionAfterParsedMerge(state, merged)).toBe(true);
+	});
+
+	test("invalidates approved execution when a parsed build-mode merge changes executable structure", () => {
+		const plan = updateWorkflowPlanScaffold(
+			createDefaultWorkflowState(),
+			"Inspect .pi/extensions/helmsman-workflow.ts and testing/pi-cli-smoke.sh",
+		).plan;
+		const state = {
+			mode: "build" as const,
+			plan: { ...plan, approvalState: "approved" as const },
+			generatedPlanText: "Goal: Inspect .pi/extensions/helmsman-workflow.ts and testing/pi-cli-smoke.sh",
+			adoptedPlan: { ...plan, approvalState: "approved" as const },
+			adoptedPlanText: "Goal: Inspect .pi/extensions/helmsman-workflow.ts and testing/pi-cli-smoke.sh",
+		};
+		const merged = {
+			...state.plan,
+			currentStep: 2,
+		};
+
+		expect(shouldPreserveApprovedExecutionAfterParsedMerge(state, merged)).toBe(false);
 	});
 
 	test("merges parsed plan output without dropping prior scaffold detail when sections are omitted", () => {

@@ -222,6 +222,22 @@ export function mergeWorkflowPlanState(current: WorkflowState["plan"], parsed: P
 	});
 }
 
+function normalizeExecutionComparablePlan(plan: WorkflowPlanState): Pick<WorkflowPlanState, "goal" | "currentPhase" | "currentStep" | "targetFiles" | "phases"> {
+	return {
+		goal: plan.goal,
+		currentPhase: plan.currentPhase,
+		currentStep: plan.currentStep,
+		targetFiles: plan.targetFiles,
+		phases: plan.phases,
+	};
+}
+
+export function shouldPreserveApprovedExecutionAfterParsedMerge(state: WorkflowState, mergedPlan: WorkflowPlanState): boolean {
+	if (state.mode !== "build" || state.plan.approvalState !== "approved") return false;
+	const currentExecutablePlan = state.adoptedPlan && state.adoptedPlanText?.trim() ? state.adoptedPlan : state.plan;
+	return JSON.stringify(normalizeExecutionComparablePlan(currentExecutablePlan)) === JSON.stringify(normalizeExecutionComparablePlan(mergedPlan));
+}
+
 export function shouldRunPreHandoffReview(text: string): boolean {
 	const trimmed = text.trim();
 	if (!trimmed) return false;

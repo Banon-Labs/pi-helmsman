@@ -58,6 +58,7 @@ import {
 	updateWorkflowMode,
 	updateWorkflowPlanGoal,
 	updateWorkflowPlanScaffold,
+	shouldPreserveApprovedExecutionAfterParsedMerge,
 	WORKFLOW_STATE_CUSTOM_TYPE,
 } from "./helmsman-workflow/state.js";
 import {
@@ -582,13 +583,26 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 
 		const parsedPlan = parseWorkflowPlanFromText(assistantText);
 		if (parsedPlan) {
-			workflowState = updateWorkflowApprovalState(
-				{
-					...updateWorkflowGeneratedPlanText(workflowState, assistantText),
-					plan: mergeWorkflowPlanState(workflowState.plan, parsedPlan),
-				},
-				"draft",
-			);
+			const mergedPlan = mergeWorkflowPlanState(workflowState.plan, parsedPlan);
+			const generatedPlanText = assistantText.trim() ? assistantText : undefined;
+			if (shouldPreserveApprovedExecutionAfterParsedMerge(workflowState, mergedPlan)) {
+				workflowState = {
+					...workflowState,
+					generatedPlanText,
+					plan: {
+						...mergedPlan,
+						approvalState: workflowState.plan.approvalState,
+					},
+				};
+			} else {
+				workflowState = updateWorkflowApprovalState(
+					{
+						...updateWorkflowGeneratedPlanText(workflowState, assistantText),
+						plan: mergedPlan,
+					},
+					"draft",
+				);
+			}
 			persistState(pi, workflowState);
 		}
 

@@ -25,6 +25,8 @@ describe("renderWorkflowPlanDraft", () => {
 		expect(rendered).toContain("Current Step: 1");
 		expect(rendered).toContain("Plan:");
 		expect(rendered).toContain("Phase 1: Clarify and inspect");
+		expect(rendered).toContain("\n\nChoices:\n1. Approve this plan and proceed.");
+		expect(rendered).toContain("3. Something else");
 
 		const parsed = parseWorkflowPlanFromText(rendered);
 		expect(parsed).not.toBeNull();
@@ -56,5 +58,7 @@ describe("renderWorkflowPlanDraft", () => {
 		expect(rendered).toContain("Goal: none");
 		expect(rendered).toContain("Target Files:\n- none");
 		expect(rendered).toContain("Plan:\nPhase 1: Pending\n1. Define the next concrete planning step");
+		expect(rendered).toContain("\n\nChoices:\n1. Approve this plan and proceed.");
+		expect(rendered).toContain("3. Something else");
 	});
 });

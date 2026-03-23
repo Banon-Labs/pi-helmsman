@@ -92,6 +92,8 @@ describe("getPlanModeBashBlockReason", () => {
 	test("allows read-only exploration commands", () => {
 		expect(getPlanModeBashBlockReason("git status --short --branch")).toBeUndefined();
 		expect(getPlanModeBashBlockReason("find ./.pi/extensions -maxdepth 2 -type f")).toBeUndefined();
+		expect(getPlanModeBashBlockReason("rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200")).toBeUndefined();
+		expect(getPlanModeBashBlockReason("rtk git diff -- ./.pi/extensions/helmsman-workflow.ts")).toBeUndefined();
 	});
 
 	test("blocks mutating shell commands in plan mode", () => {

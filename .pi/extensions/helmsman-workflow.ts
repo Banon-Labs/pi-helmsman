@@ -1,7 +1,12 @@
 import { complete, type AssistantMessage, type TextContent, type UserMessage } from "@mariozechner/pi-ai";
 import { BorderedLoader, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { buildBeadsDraftOutput, parseBeadsDraftArgs } from "./helmsman-workflow/beads.js";
-import { buildClarifiedGoal, getClarificationQuestion, shouldClarifyGoal } from "./helmsman-workflow/clarify.js";
+import {
+	buildClarifiedGoal,
+	getClarificationChoices,
+	getClarificationQuestion,
+	shouldClarifyGoal,
+} from "./helmsman-workflow/clarify.js";
 import { normalizeRequestedPlanGoal, shouldPromptForPlanGoal } from "./helmsman-workflow/command-goal.js";
 import { buildWorkflowHandoffPrompt, buildWorkflowHandoffSessionName } from "./helmsman-workflow/handoff.js";
 import { renderWorkflowPlanDraft } from "./helmsman-workflow/draft.js";
@@ -11,11 +16,15 @@ import {
 	buildPlanModeActivationNotice,
 	buildPlanModeSystemPrompt,
 	buildVerificationFailureNotice,
+	getApprovalRequiredChoices,
+	getCollaborativeReplanChoices,
+	getVerificationFailureChoices,
 } from "./helmsman-workflow/voice.js";
 import {
 	advanceWorkflowPlanForRun,
 	advanceWorkflowPlanForStep,
 	buildVerificationFailureNote,
+	getBuildModePromptTransform,
 	getExecutionBlockReason,
 	getVerificationFailureReason,
 	shouldReplanAfterExecutionBlock,
@@ -42,7 +51,13 @@ import {
 	updateWorkflowPlanScaffold,
 	WORKFLOW_STATE_CUSTOM_TYPE,
 } from "./helmsman-workflow/state.js";
-import { detectWorkflowTtsBackend, speakWorkflowMilestone, type WorkflowTtsBackend } from "./helmsman-workflow/tts.js";
+import {
+	detectWorkflowTtsBackend,
+	formatWorkflowTtsRuntimeStatus,
+	getWorkflowTtsRuntimeStatus,
+	speakWorkflowMilestone,
+	type WorkflowTtsBackend,
+} from "./helmsman-workflow/tts.js";
 import type {
 	WorkflowApprovalState,
 	WorkflowMode,
@@ -63,6 +78,7 @@ const MODE_COMMAND = "mode";
 const STATUS_COMMAND = "status";
 const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "fetch_reference", "fetch_web", "search_web", "questionnaire"];
 const BUILD_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "edit", "write", "fetch_reference", "fetch_web", "search_web"];
+const CONTEXT_CONTINUATION_ROUTE_MARKER = "[Helmsman continuation route]";
 
 function updateFooterStatus(ctx: ExtensionCommandContext | ExtensionContext, state: WorkflowState): void {
 	const tone = state.mode === "plan" ? "warning" : state.mode === "off" ? "success" : "accent";
@@ -101,27 +117,77 @@ function parseApprovalArg(args: string): WorkflowApprovalState | undefined {
 	return undefined;
 }
 
+type ForcedChoiceResult = { kind: "first" | "second" } | { kind: "other"; text: string };
+
+async function selectWithOptionalOther(
+	ctx: ExtensionContext | ExtensionCommandContext,
+	title: string,
+	message: string,
+	choices: readonly [string, string, string],
+	otherPrompt: string,
+): Promise<ForcedChoiceResult | undefined> {
+	if (!ctx.hasUI) return undefined;
+	const choice = await ctx.ui.select(message, [...choices]);
+	if (!choice) return undefined;
+	if (choice === choices[2]) {
+		const text = (await ctx.ui.input(title, otherPrompt))?.trim() ?? "";
+		return { kind: "other", text };
+	}
+	return { kind: choice === choices[0] ? "first" : "second" };
+}
+
+function showWorkflowPlanDraft(pi: ExtensionAPI, plan: WorkflowState["plan"]): void {
+	pi.sendMessage({
+		customType: `${CUSTOM_MESSAGE_TYPE}-draft`,
+		content: renderWorkflowPlanDraft(plan),
+		details: plan,
+		display: true,
+	});
+}
+
+export function getWorkflowInputTransform(mode: WorkflowMode, text: string): string | undefined {
+	if (mode !== "build") return undefined;
+	return getBuildModePromptTransform(text) ?? (text.includes(CONTEXT_CONTINUATION_ROUTE_MARKER) ? "/step" : undefined);
+}
+
+function speakWorkflowMilestoneWithWarning(
+	ctx: ExtensionContext | ExtensionCommandContext,
+	milestone: "plan-ready" | "approval-required" | "phase-complete" | "run-complete" | "safety-block",
+	backend?: WorkflowTtsBackend,
+): void {
+	const voiceResult = speakWorkflowMilestone(milestone, backend);
+	if (voiceResult.error) {
+		ctx.ui.notify(`Voice notify warning: ${voiceResult.error}`, "warning");
+	}
+}
+
 async function confirmOrBlock(
 	ctx: ExtensionContext,
 	prompt: { title: string; message: string; reason: string },
 	backend?: WorkflowTtsBackend,
 ): Promise<{ block: true; reason: string } | undefined> {
 	if (!ctx.hasUI) {
-		speakWorkflowMilestone("safety-block", backend);
+		speakWorkflowMilestoneWithWarning(ctx, "safety-block", backend);
 		return { block: true, reason: `${prompt.reason} Blocked because no interactive confirmation UI is available.` };
 	}
 	const confirmed = await ctx.ui.confirm(prompt.title, prompt.message);
 	if (!confirmed) {
-		speakWorkflowMilestone("safety-block", backend);
+		speakWorkflowMilestoneWithWarning(ctx, "safety-block", backend);
 		return { block: true, reason: `${prompt.reason} Blocked by user.` };
 	}
 	return undefined;
 }
 
+function buildWorkflowStatusContent(state: WorkflowState, hasModel: boolean): string {
+	const workflowStatus = formatWorkflowStatus(state, describePlannerRuntime(hasModel));
+	const voiceStatus = formatWorkflowTtsRuntimeStatus(getWorkflowTtsRuntimeStatus());
+	return `${workflowStatus}\n\n[Voice]\n${voiceStatus}`;
+}
+
 function publishStatus(pi: ExtensionAPI, state: WorkflowState, hasModel: boolean): void {
 	pi.sendMessage({
 		customType: CUSTOM_MESSAGE_TYPE,
-		content: formatWorkflowStatus(state, describePlannerRuntime(hasModel)),
+		content: buildWorkflowStatusContent(state, hasModel),
 		details: state,
 		display: true,
 	});
@@ -145,8 +211,19 @@ function getAssistantText(message: AssistantMessage): string {
 async function resolvePlanGoal(text: string, ctx: ExtensionContext | ExtensionCommandContext): Promise<string> {
 	const trimmed = text.trim();
 	if (!trimmed || !ctx.hasUI || !shouldClarifyGoal(trimmed)) return trimmed;
-	const clarification = await ctx.ui.input("Helmsman clarification", getClarificationQuestion(trimmed));
-	return buildClarifiedGoal(trimmed, clarification ?? "");
+	const clarificationChoices = getClarificationChoices(trimmed);
+	const clarification = await selectWithOptionalOther(
+		ctx,
+		"Helmsman clarification",
+		"How should Helmsman narrow this plan before drafting it?",
+		clarificationChoices,
+		getClarificationQuestion(trimmed),
+	);
+	if (!clarification) return trimmed;
+	if (clarification.kind === "other") {
+		return buildClarifiedGoal(trimmed, clarification.text);
+	}
+	return buildClarifiedGoal(trimmed, clarification.kind === "first" ? clarificationChoices[0] : clarificationChoices[1]);
 }
 
 const PLAN_COMMAND_SYSTEM_PROMPT = [
@@ -300,8 +377,15 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("input", async (event, ctx) => {
-		if (workflowState.mode !== "plan") return { action: "continue" as const };
 		if (!event.text.trim() || isSlashCommand(event.text)) return { action: "continue" as const };
+		if (workflowState.mode === "build") {
+			const transformed = getWorkflowInputTransform(workflowState.mode, event.text);
+			if (transformed) {
+				return { action: "transform" as const, text: transformed, images: event.images };
+			}
+			return { action: "continue" as const };
+		}
+		if (workflowState.mode !== "plan") return { action: "continue" as const };
 		const resolvedGoal = await resolvePlanGoal(event.text, ctx);
 		workflowState = updateWorkflowPlanScaffold(workflowState, resolvedGoal);
 		persistState(pi, workflowState);
@@ -329,7 +413,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 			const command = String((event.input as { command?: string }).command ?? "");
 			const planModeBlockReason = workflowState.mode === "plan" ? getPlanModeBashBlockReason(command) : undefined;
 			if (planModeBlockReason) {
-				speakWorkflowMilestone("safety-block", ttsBackend);
+				speakWorkflowMilestoneWithWarning(ctx, "safety-block", ttsBackend);
 				return { block: true, reason: planModeBlockReason };
 			}
 			const bashPrompt = getBashSafetyPrompt(command, {
@@ -351,7 +435,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 				syncActiveTools(pi, workflowState.mode);
 				updateFooterStatus(ctx, workflowState);
 				ctx.ui.notify(unexpectedFileSpreadReason, "warning");
-				speakWorkflowMilestone("safety-block", ttsBackend);
+				speakWorkflowMilestoneWithWarning(ctx, "safety-block", ttsBackend);
 				publishStatus(pi, workflowState, Boolean(ctx.model));
 				return { block: true, reason: unexpectedFileSpreadReason };
 			}
@@ -364,7 +448,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 		if (workflowState.mode === "off") return;
 		const planModeBlockReason = workflowState.mode === "plan" ? getPlanModeBashBlockReason(event.command) : undefined;
 		if (planModeBlockReason) {
-			speakWorkflowMilestone("safety-block", ttsBackend);
+			speakWorkflowMilestoneWithWarning(ctx, "safety-block", ttsBackend);
 			return {
 				result: {
 					output: planModeBlockReason,
@@ -381,7 +465,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 		});
 		if (!bashPrompt) return;
 		if (!ctx.hasUI) {
-			speakWorkflowMilestone("safety-block", ttsBackend);
+			speakWorkflowMilestoneWithWarning(ctx, "safety-block", ttsBackend);
 			return {
 				result: {
 					output: `${bashPrompt.reason} Blocked because no interactive confirmation UI is available.`,
@@ -393,7 +477,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 		}
 		const confirmed = await ctx.ui.confirm(bashPrompt.title, bashPrompt.message);
 		if (confirmed) return;
-		speakWorkflowMilestone("safety-block", ttsBackend);
+		speakWorkflowMilestoneWithWarning(ctx, "safety-block", ttsBackend);
 		return {
 			result: {
 				output: `${bashPrompt.reason} Blocked by user.`,
@@ -423,8 +507,20 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 		syncActiveTools(pi, workflowState.mode);
 		updateFooterStatus(ctx, workflowState);
 		ctx.ui.notify(buildVerificationFailureNotice(verificationFailureReason), "warning");
-		speakWorkflowMilestone("safety-block", ttsBackend);
+		speakWorkflowMilestoneWithWarning(ctx, "safety-block", ttsBackend);
 		publishStatus(pi, workflowState, Boolean(ctx.model));
+		const verificationChoice = await selectWithOptionalOther(
+			ctx,
+			"Helmsman verification follow-up",
+			buildVerificationFailureNotice(verificationFailureReason),
+			getVerificationFailureChoices(),
+			"What should Helmsman change before retrying verification?",
+		);
+		if (verificationChoice?.kind === "first" || verificationChoice?.kind === "second") {
+			showWorkflowPlanDraft(pi, workflowState.plan);
+		} else if (verificationChoice?.kind === "other" && verificationChoice.text) {
+			pi.sendUserMessage(verificationChoice.text);
+		}
 	});
 
 	pi.on("agent_end", async (event, ctx) => {
@@ -441,7 +537,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 			};
 			persistState(pi, workflowState);
 			updateFooterStatus(ctx, workflowState);
-			speakWorkflowMilestone("plan-ready", ttsBackend);
+			speakWorkflowMilestoneWithWarning(ctx, "plan-ready", ttsBackend);
 			return;
 		}
 
@@ -476,7 +572,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 			syncActiveTools(pi, workflowState.mode);
 			updateFooterStatus(ctx, workflowState);
 			ctx.ui.notify("Helmsman self-review found more work to do, so I returned to plan mode instead of handing off.", "warning");
-			speakWorkflowMilestone("safety-block", ttsBackend);
+			speakWorkflowMilestoneWithWarning(ctx, "safety-block", ttsBackend);
 			publishStatus(pi, workflowState, Boolean(ctx.model));
 		}
 
@@ -537,7 +633,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 			};
 			persistState(pi, workflowState);
 			updateFooterStatus(ctx, workflowState);
-			speakWorkflowMilestone("plan-ready", ttsBackend);
+			speakWorkflowMilestoneWithWarning(ctx, "plan-ready", ttsBackend);
 			pi.sendMessage({
 				customType: `${CUSTOM_MESSAGE_TYPE}-planner`,
 				content: generatedPlan,
@@ -551,12 +647,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 		description: "Show the providerless structured planner draft using the model-output contract",
 		handler: async (_args, ctx) => {
 			ctx.ui.notify("Showing structured planner draft.", "info");
-			pi.sendMessage({
-				customType: `${CUSTOM_MESSAGE_TYPE}-draft`,
-				content: renderWorkflowPlanDraft(workflowState.plan),
-				details: workflowState.plan,
-				display: true,
-			});
+			showWorkflowPlanDraft(pi, workflowState.plan);
 		},
 	});
 
@@ -585,14 +676,46 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 					syncActiveTools(pi, workflowState.mode);
 					updateFooterStatus(ctx, workflowState);
 					ctx.ui.notify(buildCollaborativeReplanNotice(blockedReason), "warning");
-					speakWorkflowMilestone("safety-block", ttsBackend);
+					speakWorkflowMilestoneWithWarning(ctx, "safety-block", ttsBackend);
 					publishStatus(pi, workflowState, Boolean(ctx.model));
+					const replanChoice = await selectWithOptionalOther(
+						ctx,
+						"Helmsman replanning",
+						buildCollaborativeReplanNotice(blockedReason),
+						getCollaborativeReplanChoices(),
+						"How should the plan change before Helmsman continues?",
+					);
+					if (replanChoice?.kind === "first") showWorkflowPlanDraft(pi, workflowState.plan);
+					else if (replanChoice?.kind === "other" && replanChoice.text) pi.sendUserMessage(replanChoice.text);
 					return;
 				}
 				ctx.ui.notify(buildApprovalRequiredNotice(blockedReason), "warning");
-				if (blockedReason.includes("approved plan")) speakWorkflowMilestone("approval-required", ttsBackend);
+				if (blockedReason.includes("approved plan")) speakWorkflowMilestoneWithWarning(ctx, "approval-required", ttsBackend);
 				publishStatus(pi, workflowState, Boolean(ctx.model));
-				return;
+				const approvalChoice = await selectWithOptionalOther(
+					ctx,
+					"Helmsman approval",
+					buildApprovalRequiredNotice(blockedReason),
+					getApprovalRequiredChoices(),
+					"What should Helmsman change before execution continues?",
+				);
+				if (!approvalChoice) return;
+				if (approvalChoice.kind === "first") {
+					workflowState = updateWorkflowApprovalState(workflowState, "approved");
+					persistState(pi, workflowState);
+					updateFooterStatus(ctx, workflowState);
+					ctx.ui.notify("Plan approved. Continuing with /step.", "info");
+					publishStatus(pi, workflowState, Boolean(ctx.model));
+				} else {
+					workflowState = updateWorkflowApprovalState(updateWorkflowMode(workflowState, "plan"), "draft");
+					persistState(pi, workflowState);
+					syncActiveTools(pi, workflowState.mode);
+					updateFooterStatus(ctx, workflowState);
+					publishStatus(pi, workflowState, Boolean(ctx.model));
+					if (approvalChoice.kind === "second") showWorkflowPlanDraft(pi, workflowState.plan);
+					else if (approvalChoice.text) pi.sendUserMessage(approvalChoice.text);
+					return;
+				}
 			}
 
 			const result = advanceWorkflowPlanForStep(workflowState.plan);
@@ -605,7 +728,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 			syncActiveTools(pi, workflowState.mode);
 			updateFooterStatus(ctx, workflowState);
 			ctx.ui.notify(result.summary, "info");
-			if (result.summary.includes("Completed phase")) speakWorkflowMilestone("phase-complete", ttsBackend);
+			if (result.summary.includes("Completed phase")) speakWorkflowMilestoneWithWarning(ctx, "phase-complete", ttsBackend);
 			publishStatus(pi, workflowState, Boolean(ctx.model));
 		},
 	});
@@ -621,14 +744,46 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 					syncActiveTools(pi, workflowState.mode);
 					updateFooterStatus(ctx, workflowState);
 					ctx.ui.notify(buildCollaborativeReplanNotice(blockedReason), "warning");
-					speakWorkflowMilestone("safety-block", ttsBackend);
+					speakWorkflowMilestoneWithWarning(ctx, "safety-block", ttsBackend);
 					publishStatus(pi, workflowState, Boolean(ctx.model));
+					const replanChoice = await selectWithOptionalOther(
+						ctx,
+						"Helmsman replanning",
+						buildCollaborativeReplanNotice(blockedReason),
+						getCollaborativeReplanChoices(),
+						"How should the plan change before Helmsman continues?",
+					);
+					if (replanChoice?.kind === "first") showWorkflowPlanDraft(pi, workflowState.plan);
+					else if (replanChoice?.kind === "other" && replanChoice.text) pi.sendUserMessage(replanChoice.text);
 					return;
 				}
 				ctx.ui.notify(buildApprovalRequiredNotice(blockedReason), "warning");
-				if (blockedReason.includes("approved plan")) speakWorkflowMilestone("approval-required", ttsBackend);
+				if (blockedReason.includes("approved plan")) speakWorkflowMilestoneWithWarning(ctx, "approval-required", ttsBackend);
 				publishStatus(pi, workflowState, Boolean(ctx.model));
-				return;
+				const approvalChoice = await selectWithOptionalOther(
+					ctx,
+					"Helmsman approval",
+					buildApprovalRequiredNotice(blockedReason),
+					getApprovalRequiredChoices(),
+					"What should Helmsman change before execution continues?",
+				);
+				if (!approvalChoice) return;
+				if (approvalChoice.kind === "first") {
+					workflowState = updateWorkflowApprovalState(workflowState, "approved");
+					persistState(pi, workflowState);
+					updateFooterStatus(ctx, workflowState);
+					ctx.ui.notify("Plan approved. Continuing with /run.", "info");
+					publishStatus(pi, workflowState, Boolean(ctx.model));
+				} else {
+					workflowState = updateWorkflowApprovalState(updateWorkflowMode(workflowState, "plan"), "draft");
+					persistState(pi, workflowState);
+					syncActiveTools(pi, workflowState.mode);
+					updateFooterStatus(ctx, workflowState);
+					publishStatus(pi, workflowState, Boolean(ctx.model));
+					if (approvalChoice.kind === "second") showWorkflowPlanDraft(pi, workflowState.plan);
+					else if (approvalChoice.text) pi.sendUserMessage(approvalChoice.text);
+					return;
+				}
 			}
 
 			const result = advanceWorkflowPlanForRun(workflowState.plan);
@@ -641,8 +796,8 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 			syncActiveTools(pi, workflowState.mode);
 			updateFooterStatus(ctx, workflowState);
 			ctx.ui.notify(result.summary, "info");
-			if (result.summary.includes("Completed the final phase")) speakWorkflowMilestone("run-complete", ttsBackend);
-			else if (result.summary.includes("Completed phase")) speakWorkflowMilestone("phase-complete", ttsBackend);
+			if (result.summary.includes("Completed the final phase")) speakWorkflowMilestoneWithWarning(ctx, "run-complete", ttsBackend);
+			else if (result.summary.includes("Completed phase")) speakWorkflowMilestoneWithWarning(ctx, "phase-complete", ttsBackend);
 			publishStatus(pi, workflowState, Boolean(ctx.model));
 		},
 	});
@@ -722,7 +877,7 @@ export default function helmsmanWorkflowExtension(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand(STATUS_COMMAND, {
-		description: "Show current Helmsman workflow mode and draft plan scaffold",
+		description: "Show current Helmsman workflow mode, draft plan scaffold, and voice clip runtime status",
 		handler: async (_args, ctx) => {
 			updateFooterStatus(ctx, workflowState);
 			ctx.ui.notify(`Workflow mode: ${workflowState.mode}`, "info");

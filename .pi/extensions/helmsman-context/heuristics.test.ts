@@ -190,6 +190,8 @@ describe("isReadOnlyBashCommand", () => {
 		expect(isReadOnlyBashCommand("git status --short")).toBe(true);
 		expect(isReadOnlyBashCommand("bd show pi-helmsman-3yh.6 --json")).toBe(true);
 		expect(isReadOnlyBashCommand("rg -n \"context\" .")).toBe(true);
+		expect(isReadOnlyBashCommand("rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200")).toBe(true);
+		expect(isReadOnlyBashCommand("rtk git diff -- ./.pi/extensions/helmsman-workflow.ts")).toBe(true);
 	});
 
 	test("rejects mutating bash commands", () => {

@@ -104,7 +104,7 @@ function parsePhases(planSection: string | null): WorkflowPlanPhase[] {
 }
 
 export function parseWorkflowPlanFromText(text: string): ParsedWorkflowPlanResult | null {
-	const stopLabels = ["Goal", "Constraints", "Assumptions", "Target Files", "Current Phase", "Current Step", "Verification Notes", "Approval State", "Plan"];
+	const stopLabels = ["Goal", "Constraints", "Assumptions", "Target Files", "Current Phase", "Current Step", "Verification Notes", "Approval State", "Plan", "Choices"];
 	const goalSection = extractSection(text, "Goal", stopLabels);
 	const constraintsSection = extractSection(text, "Constraints", stopLabels);
 	const assumptionsSection = extractSection(text, "Assumptions", stopLabels);

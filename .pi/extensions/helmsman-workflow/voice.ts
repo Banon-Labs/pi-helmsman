@@ -1,3 +1,21 @@
+export const SOMETHING_ELSE_OPTION = "Something else";
+
+function buildChoiceOptions(optionOne: string, optionTwo: string): [string, string, typeof SOMETHING_ELSE_OPTION] {
+	return [optionOne, optionTwo, SOMETHING_ELSE_OPTION];
+}
+
+export function getCollaborativeReplanChoices(): [string, string, typeof SOMETHING_ELSE_OPTION] {
+	return buildChoiceOptions("Review the updated plan.", "Stay in plan mode with the current draft.");
+}
+
+export function getApprovalRequiredChoices(): [string, string, typeof SOMETHING_ELSE_OPTION] {
+	return buildChoiceOptions("Approve the current plan.", "Revise the plan before execution.");
+}
+
+export function getVerificationFailureChoices(): [string, string, typeof SOMETHING_ELSE_OPTION] {
+	return buildChoiceOptions("Review the failure and adjust the plan.", "Revise the validation approach before retrying.");
+}
+
 export function buildPlanModeSystemPrompt(): string {
 	return [
 		"[HELMSMAN PLAN MODE]",

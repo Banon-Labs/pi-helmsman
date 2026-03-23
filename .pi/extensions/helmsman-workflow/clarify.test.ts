@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildClarifiedGoal, getClarificationQuestion, shouldClarifyGoal } from "./clarify";
+import { buildClarifiedGoal, getClarificationChoices, getClarificationQuestion, shouldClarifyGoal } from "./clarify";
 
 describe("shouldClarifyGoal", () => {
 	test("flags short ambiguous requests", () => {
@@ -15,10 +15,21 @@ describe("shouldClarifyGoal", () => {
 	});
 });
 
-describe("getClarificationQuestion", () => {
-	test("asks for outcome and likely files", () => {
-		expect(getClarificationQuestion("fix it")).toContain("outcome");
-		expect(getClarificationQuestion("fix it")).toContain("files");
+describe("clarification prompts", () => {
+	test("offers two suggested narrowing paths plus an exact Something else escape hatch", () => {
+		const choices = getClarificationChoices("fix it");
+		expect(choices).toHaveLength(3);
+		expect(choices[0]).toContain("intended outcome");
+		expect(choices[1]).toContain("files or repo area");
+		expect(choices[2]).toBe("Something else");
+	});
+
+	test("asks for typed follow-up only after the Something else branch", () => {
+		const question = getClarificationQuestion("fix it");
+		expect(question).toContain("outcome");
+		expect(question).toContain("files");
+		expect(question).not.toContain("1.");
+		expect(question).not.toContain("Something else");
 	});
 });
 

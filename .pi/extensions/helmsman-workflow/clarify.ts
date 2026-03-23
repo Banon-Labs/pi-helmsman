@@ -1,5 +1,16 @@
 import { extractTargetFileHints } from "./planner";
 
+export const CLARIFICATION_OTHER_OPTION = "Something else";
+
+export function getClarificationChoices(goal: string): [string, string, typeof CLARIFICATION_OTHER_OPTION] {
+	const trimmed = goal.trim();
+	return [
+		`Focus first on the intended outcome for \"${trimmed}\".`,
+		`Focus first on the files or repo area for \"${trimmed}\".`,
+		CLARIFICATION_OTHER_OPTION,
+	];
+}
+
 export function shouldClarifyGoal(goal: string): boolean {
 	const trimmed = goal.trim();
 	if (!trimmed) return false;

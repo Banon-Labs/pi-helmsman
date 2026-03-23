@@ -28,6 +28,20 @@ describe("parseWorkflowPlanFromText", () => {
 		expect(parseWorkflowPlanFromText("Just a casual reply without plan structure")).toBeNull();
 	});
 
+	test("parses drafts with a trailing Choices section without changing operational plan state", () => {
+		const parsed = parseWorkflowPlanFromText(`Goal: Add planner support\nConstraints:\n- stay read-only first\nAssumptions:\n- user wants a draft\nTarget Files:\n- .pi/extensions/helmsman-workflow.ts\nCurrent Phase: 2\nCurrent Step: 3\nVerification Notes:\n- run bun test\nApproval State: draft\nPlan:\nPhase 1: Clarify and inspect\n1. Review the current extension\n2. Confirm target files\n3. Draft structure\nPhase 2: Implement and verify\n1. Update planner state\n2. Run tests\n3. Summarize remaining risks\nChoices:\n1. Approve this plan and proceed.\n2. Revise the plan before proceeding.\n3. Something else`);
+
+		expect(parsed).not.toBeNull();
+		expect(parsed?.plan.goal).toBe("Add planner support");
+		expect(parsed?.plan.currentPhase).toBe(2);
+		expect(parsed?.plan.currentStep).toBe(3);
+		expect(parsed?.plan.targetFiles).toEqual([".pi/extensions/helmsman-workflow.ts"]);
+		expect(parsed?.plan.verificationNotes).toEqual(["run bun test"]);
+		expect(parsed?.plan.approvalState).toBe("draft");
+		expect(parsed?.plan.phases).toHaveLength(2);
+		expect(parsed?.plan.phases[1]?.steps).toEqual(["Update planner state", "Run tests", "Summarize remaining risks"]);
+	});
+
 	test("tracks which planner sections were actually present", () => {
 		const parsed = parseWorkflowPlanFromText(`Goal: refine parser behavior\nPlan:\nPhase 1: Clarify\n1. Inspect parser\n2. Add tests\n3. Merge safely`);
 
@@ -184,5 +198,14 @@ Draft`);
 				"Re-run focused parser coverage.",
 			],
 		});
+	});
+
+	test("does not absorb Choices lines into the final plan phase", () => {
+		const parsed = parseWorkflowPlanFromText(`Goal: Improve parser tolerance\nPlan:\nPhase 1: Inspect\n1. Read draft output\n2. Add a parser test\nChoices:\n1. Approve this plan and proceed.\n2. Revise the plan before proceeding.\n3. Something else`);
+
+		expect(parsed).not.toBeNull();
+		expect(parsed?.plan.phases).toEqual([
+			{ name: "Inspect", steps: ["Read draft output", "Add a parser test"] },
+		]);
 	});
 });

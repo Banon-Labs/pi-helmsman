@@ -4,6 +4,14 @@ function formatBullets(items: string[]): string {
 	return items.length > 0 ? items.map((item) => `- ${item}`).join("\n") : "- none";
 }
 
+function formatChoices(): string {
+	return [
+		"1. Approve this plan and proceed.",
+		"2. Revise the plan before proceeding.",
+		"3. Something else",
+	].join("\n");
+}
+
 function formatPlan(plan: WorkflowPlanState): string {
 	if (plan.phases.length === 0) {
 		return "Phase 1: Pending\n1. Define the next concrete planning step";
@@ -30,5 +38,7 @@ export function renderWorkflowPlanDraft(plan: WorkflowPlanState): string {
 		`Verification Notes:\n${formatBullets(plan.verificationNotes)}`,
 		`Approval State: ${plan.approvalState}`,
 		`Plan:\n${formatPlan(plan)}`,
+		"",
+		`Choices:\n${formatChoices()}`,
 	].join("\n");
 }

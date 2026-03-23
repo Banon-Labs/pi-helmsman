@@ -25,6 +25,15 @@ const READ_ONLY_PREFIXES = [
 	"bd status",
 	"bd where",
 	"bd context",
+	"rtk read",
+	"rtk git status",
+	"rtk git diff",
+	"rtk git log",
+	"rtk git show",
+	"rtk git branch",
+	"rtk find",
+	"rtk grep",
+	"rtk ls",
 ];
 
 function normalizeText(text: string): string {

@@ -58,7 +58,7 @@ describe("restoreWorkflowState", () => {
 						constraints: ["stay scoped"],
 						assumptions: ["existing scaffold is valid"],
 						verificationNotes: ["run focused tests"],
-						explorationCommands: ["rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200"],
+						explorationCommands: ["rtk read ./.pi/extensions/helmsman-workflow.ts"],
 						phases: [{ name: "Inspect", steps: ["Read files", "Summarize approach", "Prepare implementation"] }],
 					},
 					generatedPlanText: "Goal: ship workflow skeleton\nPlan:\nPhase 1: Inspect\n1. Read files",
@@ -74,7 +74,7 @@ describe("restoreWorkflowState", () => {
 		expect(state.generatedPlanText).toBe("Goal: ship workflow skeleton\nPlan:\nPhase 1: Inspect\n1. Read files");
 		expect(state.plan.approvalState).toBe("approved");
 		expect(state.plan.constraints).toEqual(["stay scoped"]);
-		expect(state.plan.explorationCommands).toEqual(["rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200"]);
+		expect(state.plan.explorationCommands).toEqual(["rtk read ./.pi/extensions/helmsman-workflow.ts"]);
 	});
 
 	test("falls back to defaults when no custom entry exists", () => {
@@ -107,8 +107,8 @@ describe("workflow state updates", () => {
 		expect(parkedPlan.assumptions).toContain("stash ref stash@{0} exists");
 		expect(parkedPlan.verificationNotes).toContain("Apply the stash");
 		expect(parkedPlan.explorationCommands).toEqual([
-			"git stash list --format='%gd %s'",
-			"git stash show --name-only --format= stash@{0}",
+			"rtk git stash list --format='%gd %s'",
+			"rtk git stash show --name-only --format= stash@{0}",
 			"rtk git status --short --branch",
 		]);
 		expect(parkedPlan.phases[0].name).toBe("Parked");
@@ -178,7 +178,7 @@ describe("workflow state updates", () => {
 			".pi/extensions/helmsman-workflow.ts",
 			"testing/pi-cli-smoke.sh",
 		]);
-		expect(updated.plan.explorationCommands).toContain("rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200");
+		expect(updated.plan.explorationCommands).toContain("rtk read ./.pi/extensions/helmsman-workflow.ts");
 		expect(updated.plan.phases.length).toBeGreaterThan(0);
 	});
 
@@ -298,7 +298,7 @@ describe("workflow state updates", () => {
 		});
 
 		expect(sanitized.targetFiles).toEqual([".pi/extensions/helmsman-workflow.ts"]);
-		expect(sanitized.explorationCommands).toContain("rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200");
+		expect(sanitized.explorationCommands).toContain("rtk read ./.pi/extensions/helmsman-workflow.ts");
 		expect(sanitized.explorationCommands.some((command) => command.includes("/disabled"))).toBe(false);
 	});
 });
@@ -362,7 +362,7 @@ describe("formatWorkflowStatus", () => {
 				constraints: ["stay scoped"],
 				assumptions: ["status plumbing is already present"],
 				verificationNotes: ["run bun test"],
-				explorationCommands: ["rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200"],
+				explorationCommands: ["rtk read ./.pi/extensions/helmsman-workflow.ts"],
 				phases: [{ name: "Implement", steps: ["Update code", "Run tests", "Smoke validate"] }],
 			},
 		});
@@ -374,7 +374,7 @@ describe("formatWorkflowStatus", () => {
 		expect(output).toContain("- .pi/extensions/helmsman-workflow.ts");
 		expect(output).toContain("- stay scoped");
 		expect(output).toContain("- status plumbing is already present");
-		expect(output).toContain("- rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200");
+		expect(output).toContain("- rtk read ./.pi/extensions/helmsman-workflow.ts");
 		expect(output).toContain("Phase 1: Implement");
 		expect(output).toContain("Approval: approved");
 	});

@@ -5,10 +5,12 @@ export interface RtkRewrite {
 }
 
 const SHELL_META_TOKENS = ["&&", "||", ";", "|", ">", "<"];
-const GIT_SUBCOMMANDS = new Set(["status", "diff", "log", "show", "branch"]);
+const GIT_SUBCOMMANDS = new Set(["status", "diff", "log", "show", "branch", "stash"]);
 
 function hasShellMetacharacters(command: string): boolean {
-	return SHELL_META_TOKENS.some((token) => command.includes(token));
+	const trimmed = command.trim();
+	const tokens = SHELL_META_TOKENS.filter((token) => !(token === "|" && trimmed.startsWith("grep ")));
+	return tokens.some((token) => command.includes(token));
 }
 
 function tokenizeCommand(command: string): string[] {
@@ -67,6 +69,10 @@ export function getRtkEquivalent(command: string): RtkRewrite | undefined {
 	}
 
 	return undefined;
+}
+
+export function preferRtkCommand(command: string): string {
+	return getRtkEquivalent(command)?.rewrittenCommand ?? command;
 }
 
 export function looksLikeBareInspectionPrompt(text: string): boolean {

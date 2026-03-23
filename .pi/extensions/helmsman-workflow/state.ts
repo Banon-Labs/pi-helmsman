@@ -8,6 +8,7 @@ import type {
 	WorkflowState,
 } from "./types";
 import { buildPlanScaffoldFromGoal, buildReadOnlyExplorationCommands } from "./planner";
+import { preferRtkReadOnlyCommands } from "../rtk-first/tools";
 
 export const WORKFLOW_STATE_CUSTOM_TYPE = "helmsman-workflow-state";
 
@@ -137,11 +138,11 @@ export function buildParkedWorkflowPlan(stashRef: string, targetFiles: string[],
 			"no new unrelated edits were mixed in",
 		],
 		verificationNotes: ["Apply the stash", "Confirm git status", "Run focused tests"],
-		explorationCommands: [
+		explorationCommands: preferRtkReadOnlyCommands([
 			"git stash list --format='%gd %s'",
 			`git stash show --name-only --format= ${stashRef}`,
-			"rtk git status --short --branch",
-		],
+			"git status --short --branch",
+		]),
 		phases: [
 			{
 				name: "Parked",

@@ -3,8 +3,8 @@ import type { BashSpawnContext } from "@mariozechner/pi-coding-agent";
 
 export const RTK_BINARY = "rtk";
 export const RTK_REWRITE_TIMEOUT_MS = 2_000;
-export const RTK_UNCHANGED_TOOLS = ["read", "grep", "find", "ls"] as const;
-export const RTK_BASH_ONLY_LIMITATION = `RTK rewriting currently applies only to bash tool calls. Built-in ${RTK_UNCHANGED_TOOLS.join("/")} remain unchanged.`;
+export const RTK_OVERRIDDEN_READ_ONLY_TOOLS = ["read", "grep", "find", "ls"] as const;
+export const RTK_PREFERRED_LIMITATION = `RTK preference applies automatically to bash and to built-in ${RTK_OVERRIDDEN_READ_ONLY_TOOLS.join("/")} when their parameters map cleanly; otherwise Pi fails open to the original built-in behavior.`;
 
 export type RtkAvailabilityStatus = "available" | "missing" | "error";
 export type RtkRewriteStatus = "rewritten" | "missing" | "unchanged" | "empty" | "error";
@@ -53,7 +53,7 @@ export interface RtkStatusSnapshot {
 	rewriteActive: boolean;
 	fallbackMode: "disabled" | "pass_through";
 	limitation: string;
-	unchangedTools: readonly string[];
+	overriddenReadOnlyTools: readonly string[];
 	nextSteps: string[];
 }
 
@@ -211,6 +211,7 @@ export function createRtkStatusSnapshot(options: RtkRewriteOptions = {}): RtkSta
 	const nextSteps = availability.available
 		? [
 			"Run a bash-backed read-only inspection command such as `git status --short --branch` to confirm RTK-backed execution.",
+			"Then exercise a built-in read-only tool such as `read`, `grep`, `find`, or `ls` to confirm the RTK-preferred overrides are active for supported parameter shapes.",
 			"If a rewrite looks wrong, inspect `rtk rewrite '<command>'` directly and Pi will fail open to the original bash command.",
 		]
 		: [
@@ -228,8 +229,8 @@ export function createRtkStatusSnapshot(options: RtkRewriteOptions = {}): RtkSta
 		availability,
 		rewriteActive: availability.available,
 		fallbackMode: availability.available ? "disabled" : "pass_through",
-		limitation: RTK_BASH_ONLY_LIMITATION,
-		unchangedTools: RTK_UNCHANGED_TOOLS,
+		limitation: RTK_PREFERRED_LIMITATION,
+		overriddenReadOnlyTools: RTK_OVERRIDDEN_READ_ONLY_TOOLS,
 		nextSteps,
 	};
 }
@@ -241,8 +242,8 @@ export function formatRtkStatusReport(snapshot: RtkStatusSnapshot): string {
 		`- Bash override registered: yes`,
 		`- RTK binary: ${snapshot.availability.available ? "available" : snapshot.availability.status}`,
 		`- Bash rewriting: ${snapshot.rewriteActive ? "active via rtk rewrite" : "fail-open pass-through"}`,
+		`- Built-in read-only overrides: ${snapshot.overriddenReadOnlyTools.join(", ")}`,
 		`- Limitation: ${snapshot.limitation}`,
-		`- Unchanged built-ins: ${snapshot.unchangedTools.join(", ")}`,
 	];
 
 	if (snapshot.availability.detail) {

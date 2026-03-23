@@ -1,4 +1,5 @@
 import type { WorkflowPlanPhase, WorkflowPlanState } from "./types";
+import { preferRtkReadOnlyCommands } from "../rtk-first/tools";
 
 const PATH_HINT_PATTERN = /(?:\/[^\s,:;()]+|(?:\.?\.\/)?[A-Za-z0-9_./-]+\.[A-Za-z0-9_-]+)/g;
 
@@ -18,15 +19,15 @@ export function summarizeGoalAsAssumption(goal: string): string {
 
 export function buildReadOnlyExplorationCommands(targetFiles: string[]): string[] {
 	if (targetFiles.length === 0) {
-		return [
-			"rtk git status --short --branch",
-			"rtk find ./.pi/extensions -maxdepth 2 -type f",
-			"rtk grep \"TODO|plan|workflow\" . -n",
-		];
+		return preferRtkReadOnlyCommands([
+			"git status --short --branch",
+			"find ./.pi/extensions -maxdepth 2 -type f",
+			"grep \"TODO|plan|workflow\" . -n",
+		]);
 	}
 
-	const targeted = targetFiles.slice(0, 2).map((path) => `rtk read ./${path.replace(/^\.\//, "")} --max-lines 200`);
-	return [...targeted, 'rtk grep "helmsman-workflow" . -n'];
+	const targeted = targetFiles.slice(0, 2).map((path) => `cat ./${path.replace(/^\.\//, "")}`);
+	return preferRtkReadOnlyCommands([...targeted, 'grep "helmsman-workflow" . -n']);
 }
 
 function buildDefaultPhases(): WorkflowPlanPhase[] {

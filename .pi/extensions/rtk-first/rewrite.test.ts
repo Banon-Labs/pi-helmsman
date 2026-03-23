@@ -105,6 +105,7 @@ describe("rtk status reporting", () => {
 		const report = formatRtkStatusReport(snapshot);
 		expect(report).toContain("RTK integration status");
 		expect(report).toContain("Bash rewriting: active via rtk rewrite");
+		expect(report).toContain("Built-in read-only overrides: read, grep, find, ls");
 		expect(rewriteModeSeverity(snapshot)).toBe("info");
 	});
 

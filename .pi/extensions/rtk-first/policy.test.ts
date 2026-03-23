@@ -5,6 +5,7 @@ import {
 	buildRtkUserBashNotice,
 	getRtkEquivalent,
 	looksLikeBareInspectionPrompt,
+	preferRtkCommand,
 } from "./policy";
 
 describe("getRtkEquivalent", () => {
@@ -21,11 +22,13 @@ describe("getRtkEquivalent", () => {
 			"rtk git status --short --branch",
 		);
 		expect(getRtkEquivalent("git diff --stat")?.rewrittenCommand).toBe("rtk git diff --stat");
+		expect(getRtkEquivalent("git stash list --format='%gd %s'")?.rewrittenCommand).toBe("rtk git stash list --format='%gd %s'");
 	});
 
 	test("rewrites search and listing commands", () => {
 		expect(getRtkEquivalent("find . -maxdepth 2 -type f")?.rewrittenCommand).toBe("rtk find . -maxdepth 2 -type f");
 		expect(getRtkEquivalent("grep helmsman . -n")?.rewrittenCommand).toBe("rtk grep helmsman . -n");
+		expect(getRtkEquivalent('grep "TODO|plan|workflow" . -n')?.rewrittenCommand).toBe('rtk grep "TODO|plan|workflow" . -n');
 		expect(getRtkEquivalent("ls -la .pi/extensions")?.rewrittenCommand).toBe("rtk ls -la .pi/extensions");
 	});
 
@@ -54,5 +57,11 @@ describe("rtk-first prompt helpers", () => {
 		expect(buildRtkUserBashNotice(rewrite!)).toBe(
 			"RTK rewrite: git status --short --branch -> rtk git status --short --branch",
 		);
+	});
+
+	test("normalizes generic read-only command text toward RTK centrally", () => {
+		expect(preferRtkCommand("cat package.json")).toBe("rtk read package.json");
+		expect(preferRtkCommand("git stash list --format='%gd %s'")).toBe("rtk git stash list --format='%gd %s'");
+		expect(preferRtkCommand("echo hi")).toBe("echo hi");
 	});
 });

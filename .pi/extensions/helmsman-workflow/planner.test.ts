@@ -42,8 +42,8 @@ describe("buildReadOnlyExplorationCommands", () => {
 		]);
 
 		expect(commands).toEqual([
-			"rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200",
-			"rtk read ./testing/pi-cli-smoke.sh --max-lines 200",
+			"rtk read ./.pi/extensions/helmsman-workflow.ts",
+			"rtk read ./testing/pi-cli-smoke.sh",
 			"rtk grep \"helmsman-workflow\" . -n",
 		]);
 	});
@@ -77,6 +77,6 @@ describe("buildPlanScaffoldFromGoal", () => {
 		]);
 		expect(plan.assumptions[0]).toContain("The user wants:");
 		expect(plan.verificationNotes[0]).toContain("Validate with focused tests first");
-		expect(plan.explorationCommands).toContain("rtk read ./.pi/extensions/helmsman-workflow.ts --max-lines 200");
+		expect(plan.explorationCommands).toContain("rtk read ./.pi/extensions/helmsman-workflow.ts");
 	});
 });

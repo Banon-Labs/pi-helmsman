@@ -10,6 +10,7 @@ import {
 	shouldClarifyGoal,
 } from "./helmsman-workflow/clarify.js";
 import { normalizeRequestedPlanGoal, shouldPromptForPlanGoal } from "./helmsman-workflow/command-goal.js";
+import { resolveForcedChoiceSelection, type ForcedChoiceResult } from "./helmsman-workflow/choices.js";
 import { buildWorkflowHandoffPrompt, buildWorkflowHandoffSessionName } from "./helmsman-workflow/handoff.js";
 import { renderWorkflowPlanDraft } from "./helmsman-workflow/draft.js";
 import {
@@ -119,8 +120,6 @@ function parseApprovalArg(args: string): WorkflowApprovalState | undefined {
 	return undefined;
 }
 
-type ForcedChoiceResult = { kind: "first" | "second" } | { kind: "other"; text: string };
-
 async function selectWithOptionalOther(
 	ctx: ExtensionContext | ExtensionCommandContext,
 	title: string,
@@ -130,12 +129,16 @@ async function selectWithOptionalOther(
 ): Promise<ForcedChoiceResult | undefined> {
 	if (!ctx.hasUI) return undefined;
 	const choice = await ctx.ui.select(message, [...choices]);
-	if (!choice) return undefined;
-	if (choice === choices[2]) {
-		const text = (await ctx.ui.input(title, otherPrompt))?.trim() ?? "";
-		return { kind: "other", text };
+	const result = resolveForcedChoiceSelection(
+		choice,
+		choices,
+		choice === choices[2] ? await ctx.ui.input(title, otherPrompt) : undefined,
+	);
+	if (result?.kind === "other-empty") {
+		ctx.ui.notify("Helmsman kept the current draft because the Something else follow-up was left blank.", "warning");
+		return undefined;
 	}
-	return { kind: choice === choices[0] ? "first" : "second" };
+	return result;
 }
 
 function showWorkflowPlanDraft(pi: ExtensionAPI, plan: WorkflowState["plan"]): void {

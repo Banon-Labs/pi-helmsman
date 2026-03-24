@@ -53,6 +53,27 @@ function normalizeText(text: string): string {
 	return text.toLowerCase();
 }
 
+const HARMLESS_READ_ONLY_PREFIXES = ["echo", "printf"];
+
+function isReadOnlyShellSegment(command: string): boolean {
+	const normalized = stripLeadingReadOnlyShellWrappers(command).trim().toLowerCase();
+	if (!normalized) return true;
+	if (normalized.includes("&&")) {
+		return normalized
+			.split(/\s*&&\s*/)
+			.map((segment) => segment.trim())
+			.filter(Boolean)
+			.every((segment) => isReadOnlyShellSegment(segment));
+	}
+	if (["||", ";", ">", "<", " rm ", " mv ", " cp ", " chmod ", " chown "].some((token) => normalized.includes(token))) {
+		return false;
+	}
+	if (HARMLESS_READ_ONLY_PREFIXES.some((prefix) => normalized === prefix || normalized.startsWith(`${prefix} `))) {
+		return true;
+	}
+	return READ_ONLY_PREFIXES.some((prefix) => normalized === prefix.trim() || normalized.startsWith(prefix));
+}
+
 function rankCandidates(
 	input: AssessContextInput,
 	candidates: RepoCandidate[],
@@ -179,10 +200,5 @@ export function assessContext(input: AssessContextInput): ContextAssessment {
 }
 
 export function isReadOnlyBashCommand(command: string): boolean {
-	const normalized = stripLeadingReadOnlyShellWrappers(command).toLowerCase();
-	if (!normalized) return true;
-	if (["&&", "||", ";", ">", "<", " rm ", " mv ", " cp ", " chmod ", " chown "].some((token) => normalized.includes(token))) {
-		return false;
-	}
-	return READ_ONLY_PREFIXES.some((prefix) => normalized === prefix.trim() || normalized.startsWith(prefix));
+	return isReadOnlyShellSegment(command);
 }

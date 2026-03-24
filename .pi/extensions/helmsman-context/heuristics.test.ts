@@ -194,11 +194,14 @@ describe("isReadOnlyBashCommand", () => {
 		expect(isReadOnlyBashCommand("rtk git diff -- ./.pi/extensions/helmsman-workflow.ts")).toBe(true);
 		expect(isReadOnlyBashCommand("cd /home/choza/projects/pi-helmsman && pwd")).toBe(true);
 		expect(isReadOnlyBashCommand("cd /home/choza/projects/pi-helmsman && rtk git status --short --branch")).toBe(true);
+		expect(isReadOnlyBashCommand("pwd && echo '---' && rtk git status --short --branch && echo '---' && bd ready --json")).toBe(true);
+		expect(isReadOnlyBashCommand("cd /home/choza/projects/pi-helmsman && pwd && rtk git status --short --branch && bd show pi-helmsman-sey --json")).toBe(true);
 	});
 
 	test("rejects mutating bash commands", () => {
 		expect(isReadOnlyBashCommand("git commit -m 'x'" )).toBe(false);
 		expect(isReadOnlyBashCommand("bd update pi-helmsman-3yh.6 --status in_progress --json")).toBe(false);
 		expect(isReadOnlyBashCommand("rm -rf testing")).toBe(false);
+		expect(isReadOnlyBashCommand("pwd && rtk git status --short --branch && bd update pi-helmsman-sey --claim --json")).toBe(false);
 	});
 });

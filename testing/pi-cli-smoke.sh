@@ -1,9 +1,8 @@
-#!/usr/bin/env bash
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=./pi-sandbox-state.sh
 source "$SCRIPT_DIR/pi-sandbox-state.sh"
+source "$SCRIPT_DIR/pi-tmux-sandbox-common.sh"
 
 usage() {
 	cat <<'EOF'
@@ -113,33 +112,17 @@ if [[ -z "$SESSION" || -z "$PROMPT" ]]; then
 	exit 2
 fi
 
-if ! command -v pi >/dev/null 2>&1; then
-	echo "error: pi not found in PATH" >&2
-	exit 127
-fi
+pi_tmux_require_command pi
+pi_tmux_require_command tmux
 
-if ! command -v tmux >/dev/null 2>&1; then
-	echo "error: tmux not found in PATH" >&2
-	exit 127
-fi
-
-if [[ -z "$SANDBOX_ROOT" ]]; then
-	SANDBOX_ROOT="$(mktemp -d /tmp/pi-cli-smoke.XXXXXX)"
-else
-	mkdir -p "$SANDBOX_ROOT"
-fi
+pi_tmux_prepare_sandbox_root "pi-cli-smoke" SANDBOX_ROOT "$SANDBOX_ROOT"
 
 if [[ -z "$CAPTURE_OUT" ]]; then
 	CAPTURE_OUT="$SANDBOX_ROOT/pi-cli-smoke-capture.txt"
 fi
 
-AGENT_DIR="$SANDBOX_ROOT/agent"
-mkdir -p "$AGENT_DIR"
-if [[ "$MIRROR_HOST_STATE" == "1" ]]; then
-	mirror_pi_agent_state "$AGENT_DIR"
-fi
+pi_tmux_prepare_agent_dir "$SANDBOX_ROOT" AGENT_DIR "$MIRROR_HOST_STATE"
 rm -f "$CAPTURE_OUT"
-tmux kill-session -t "$SESSION" 2>/dev/null || true
 
 pi_args=()
 for extension in "${EXTENSIONS[@]}"; do
@@ -152,32 +135,17 @@ for arg in "${pi_args[@]}"; do
 	pi_args_escaped+=" $q"
 done
 
-tmux new-session -d -s "$SESSION" "cd \"$WORKDIR\" && PI_CODING_AGENT_DIR=\"$AGENT_DIR\" pi${pi_args_escaped}"
+pi_tmux_start_session "$SESSION" "cd \"$WORKDIR\" && PI_CODING_AGENT_DIR=\"$AGENT_DIR\" pi${pi_args_escaped}"
 
-start_ts="$(date +%s)"
-while true; do
-	now_ts="$(date +%s)"
-	if (( now_ts - start_ts >= READY_TIMEOUT_SECONDS )); then
-		tmux capture-pane -p -t "$SESSION" -S -"$CAPTURE_LINES" > "$CAPTURE_OUT"
-		echo "error: pi did not become ready within ${READY_TIMEOUT_SECONDS}s" >&2
-		exit 1
-	fi
+if ! pi_tmux_wait_for_ready "$SESSION" "$CAPTURE_LINES" "$READY_TIMEOUT_SECONDS" "$READY_PROBE_INTERVAL_SECONDS" \
+	"Ask anything" "ctrl+p commands" "loaded AGENTS.md" "[Context]" "no-model" "No models available"; then
+	pi_tmux_capture_pane "$SESSION" "$CAPTURE_LINES" "$CAPTURE_OUT"
+	echo "error: pi did not become ready within ${READY_TIMEOUT_SECONDS}s" >&2
+	exit 1
+fi
 
-	pane_state="$(tmux capture-pane -p -t "$SESSION" -S -"$CAPTURE_LINES")"
-	if [[ "$pane_state" == *"Ask anything"* || "$pane_state" == *"ctrl+p commands"* || "$pane_state" == *"loaded AGENTS.md"* || "$pane_state" == *"[Context]"* || "$pane_state" == *"no-model"* || "$pane_state" == *"No models available"* ]]; then
-		break
-	fi
-	sleep "$READY_PROBE_INTERVAL_SECONDS"
-done
-
-tmux send-keys -t "$SESSION" Escape
-tmux send-keys -t "$SESSION" Escape
-sleep 1
-tmux send-keys -t "$SESSION" C-u
-tmux send-keys -t "$SESSION" "$PROMPT"
-tmux send-keys -t "$SESSION" "$SUBMIT_KEY"
-sleep "$WAIT_SECONDS"
-tmux capture-pane -p -t "$SESSION" -S -"$CAPTURE_LINES" > "$CAPTURE_OUT"
+pi_tmux_send_prompt "$SESSION" "$PROMPT" "$SUBMIT_KEY" "$WAIT_SECONDS"
+pi_tmux_capture_pane "$SESSION" "$CAPTURE_LINES" "$CAPTURE_OUT"
 
 printf 'session=%s\n' "$SESSION"
 printf 'sandbox_root=%s\n' "$SANDBOX_ROOT"

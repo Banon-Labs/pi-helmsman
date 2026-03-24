@@ -1,9 +1,8 @@
-#!/usr/bin/env bash
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=./pi-sandbox-state.sh
 source "$SCRIPT_DIR/pi-sandbox-state.sh"
+source "$SCRIPT_DIR/pi-tmux-sandbox-common.sh"
 
 usage() {
 	cat <<'EOF'
@@ -77,11 +76,9 @@ if [[ -z "$SESSION" ]]; then
 	exit 2
 fi
 
-if [[ -z "$SANDBOX_ROOT" ]]; then
-	SANDBOX_ROOT="$(mktemp -d /tmp/pi-selection-sandbox.XXXXXX)"
-else
-	mkdir -p "$SANDBOX_ROOT"
-fi
+pi_tmux_require_command tmux
+
+pi_tmux_prepare_sandbox_root "pi-selection-sandbox" SANDBOX_ROOT "$SANDBOX_ROOT"
 
 if [[ -z "$CAPTURE_OUT" ]]; then
 	CAPTURE_OUT="$SANDBOX_ROOT/capture.txt"
@@ -95,48 +92,24 @@ REPO_ALPHA="$WORKSPACE_ROOT/alpha-repo"
 REPO_BETA="$WORKSPACE_ROOT/beta-repo"
 AGENT_DIR="$SANDBOX_ROOT/agent"
 
-mkdir -p "$NON_REPO_WORKDIR" "$REPO_ALPHA/.git" "$REPO_BETA/.git" "$AGENT_DIR"
-if [[ "$MIRROR_HOST_STATE" == "1" ]]; then
-	mirror_pi_agent_state "$AGENT_DIR"
-fi
+mkdir -p "$NON_REPO_WORKDIR" "$REPO_ALPHA/.git" "$REPO_BETA/.git"
+pi_tmux_prepare_agent_dir "$SANDBOX_ROOT" AGENT_DIR "$MIRROR_HOST_STATE"
 rm -f "$CAPTURE_OUT" "$CAPTURE_BEFORE_SELECT" "$CAPTURE_AFTER_SELECT"
 
-tmux kill-session -t "$SESSION" 2>/dev/null || true
+pi_tmux_start_session "$SESSION" "cd '$NON_REPO_WORKDIR' && PI_CODING_AGENT_DIR='$AGENT_DIR' pi -e /home/choza/projects/pi-helmsman/.pi/extensions/helmsman-context.ts"
 
-tmux new-session -d -s "$SESSION" "cd '$NON_REPO_WORKDIR' && PI_CODING_AGENT_DIR='$AGENT_DIR' pi -e /home/choza/projects/pi-helmsman/.pi/extensions/helmsman-context.ts"
+if ! pi_tmux_wait_for_ready "$SESSION" 320 30 1 "[Extensions]" "[Context]" "No models available" "no-model" "ctx:uncertain"; then
+	pi_tmux_capture_pane "$SESSION" 320 "$CAPTURE_OUT"
+	echo "error: pi did not become ready within 30s" >&2
+	exit 1
+fi
 
-start_ts="$(date +%s)"
-while true; do
-	now_ts="$(date +%s)"
-	if (( now_ts - start_ts >= 30 )); then
-		tmux capture-pane -p -t "$SESSION" -S -320 > "$CAPTURE_OUT"
-		echo "error: pi did not become ready within 30s" >&2
-		exit 1
-	fi
-	pane_state="$(tmux capture-pane -p -t "$SESSION" -S -320)"
-	if [[ "$pane_state" == *"[Context]"* || "$pane_state" == *"No models available"* || "$pane_state" == *"no-model"* ]]; then
-		break
-	fi
-	sleep 1
-done
-
-send_prompt() {
-	local text="$1"
-	tmux send-keys -t "$SESSION" Escape
-	tmux send-keys -t "$SESSION" Escape
-	sleep 1
-	tmux send-keys -t "$SESSION" C-u
-	tmux send-keys -t "$SESSION" "$text"
-	tmux send-keys -t "$SESSION" Enter
-	sleep "$WAIT_SECONDS"
-}
-
-send_prompt "continue current task"
-send_prompt "/context-switch"
-tmux capture-pane -p -t "$SESSION" -S -320 > "$CAPTURE_BEFORE_SELECT"
+pi_tmux_send_prompt "$SESSION" "continue current task" Enter "$WAIT_SECONDS"
+pi_tmux_send_prompt "$SESSION" "/context-switch" Enter "$WAIT_SECONDS"
+pi_tmux_capture_pane "$SESSION" 320 "$CAPTURE_BEFORE_SELECT"
 tmux send-keys -t "$SESSION" Enter
 sleep "$WAIT_SECONDS"
-tmux capture-pane -p -t "$SESSION" -S -320 > "$CAPTURE_AFTER_SELECT"
+pi_tmux_capture_pane "$SESSION" 320 "$CAPTURE_AFTER_SELECT"
 cp -f "$CAPTURE_AFTER_SELECT" "$CAPTURE_OUT"
 
 printf 'session=%s\n' "$SESSION"

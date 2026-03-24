@@ -2,9 +2,9 @@
 
 ## Workspace coordinates
 
-- Current workspace root: `/home/choza/projects/pi-helmsman-dev`
-- Sibling main repo: `/home/choza/projects/pi-helmsman`
-- Before editing, verify the target repo/worktree path explicitly. Do not assume the sibling repo is the active workspace.
+- Current workspace root: the checkout/worktree you are actively running in.
+- This repo may be used alongside sibling checkouts or linked worktrees.
+- Before editing, verify the exact target repo/worktree path explicitly. Do not assume a sibling checkout is the active workspace.
 - When a task depends on the exact location, state the filesystem path in the issue and in the handoff notes.
 
 This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.

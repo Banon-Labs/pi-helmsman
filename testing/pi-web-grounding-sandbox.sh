@@ -1,9 +1,8 @@
-#!/usr/bin/env bash
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=./pi-sandbox-state.sh
 source "$SCRIPT_DIR/pi-sandbox-state.sh"
+source "$SCRIPT_DIR/pi-tmux-sandbox-common.sh"
 
 usage() {
 	cat <<'EOF'
@@ -99,11 +98,7 @@ if [[ -z "$SESSION" ]]; then
 	exit 2
 fi
 
-if [[ -z "$SANDBOX_ROOT" ]]; then
-	SANDBOX_ROOT="$(mktemp -d /tmp/pi-web-grounding-sandbox.XXXXXX)"
-else
-	mkdir -p "$SANDBOX_ROOT"
-fi
+pi_tmux_prepare_sandbox_root "pi-web-grounding-sandbox" SANDBOX_ROOT "$SANDBOX_ROOT"
 
 if [[ -z "$CAPTURE_OUT" ]]; then
 	CAPTURE_OUT="$SANDBOX_ROOT/capture.txt"
@@ -111,41 +106,23 @@ fi
 
 WORKDIR="$SANDBOX_ROOT/workdir"
 AGENT_DIR="$SANDBOX_ROOT/agent"
-mkdir -p "$WORKDIR" "$AGENT_DIR"
-if [[ "$MIRROR_HOST_STATE" == "1" ]]; then
-	mirror_pi_agent_state "$AGENT_DIR"
-fi
+mkdir -p "$WORKDIR"
+pi_tmux_prepare_agent_dir "$SANDBOX_ROOT" AGENT_DIR "$MIRROR_HOST_STATE"
 rm -f "$CAPTURE_OUT"
 
-tmux kill-session -t "$SESSION" 2>/dev/null || true
-tmux new-session -d -s "$SESSION" "cd '$WORKDIR' && PI_CODING_AGENT_DIR='$AGENT_DIR' pi"
+pi_tmux_start_session "$SESSION" "cd '$WORKDIR' && PI_CODING_AGENT_DIR='$AGENT_DIR' pi"
 
-start_ts="$(date +%s)"
-while true; do
-	now_ts="$(date +%s)"
-	if (( now_ts - start_ts >= 30 )); then
-		tmux capture-pane -p -t "$SESSION" -S -400 > "$CAPTURE_OUT"
-		echo "error: pi did not become ready within 30s" >&2
-		exit 1
-	fi
-	pane_state="$(tmux capture-pane -p -t "$SESSION" -S -400)"
-	if [[ "$pane_state" == *"[Extensions]"* || "$pane_state" == *"/ for commands"* || "$pane_state" == *"no-model"* ]]; then
-		break
-	fi
-	sleep 1
-done
-
-if [[ "$RUN_DEMO" == "1" ]]; then
-	tmux send-keys -t "$SESSION" Escape
-	tmux send-keys -t "$SESSION" Escape
-	sleep 1
-	tmux send-keys -t "$SESSION" C-u
-	tmux send-keys -t "$SESSION" "/authoritative-web --limit $LIMIT $QUERY"
-	tmux send-keys -t "$SESSION" Enter
-	sleep "$WAIT_SECONDS"
+if ! pi_tmux_wait_for_ready "$SESSION" 400 30 1 "[Extensions]" "/ for commands" "no-model"; then
+	pi_tmux_capture_pane "$SESSION" 400 "$CAPTURE_OUT"
+	echo "error: pi did not become ready within 30s" >&2
+	exit 1
 fi
 
-tmux capture-pane -p -t "$SESSION" -S -500 > "$CAPTURE_OUT"
+if [[ "$RUN_DEMO" == "1" ]]; then
+	pi_tmux_send_prompt "$SESSION" "/authoritative-web --limit $LIMIT $QUERY" Enter "$WAIT_SECONDS"
+fi
+
+pi_tmux_capture_pane "$SESSION" 500 "$CAPTURE_OUT"
 
 printf 'session=%s\n' "$SESSION"
 printf 'sandbox_root=%s\n' "$SANDBOX_ROOT"

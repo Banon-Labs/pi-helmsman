@@ -1,4 +1,4 @@
-import type { WorkflowMode, WorkflowPlanState, WorkflowState } from "./types";
+import type { WorkflowPlanState, WorkflowState } from "./types";
 
 export const CONTEXT_CONTINUATION_ROUTE_MARKER = "[Helmsman continuation route]";
 
@@ -46,13 +46,12 @@ export function isWorkflowContinuationIntent(text: string): boolean {
 	return normalized === "continue" || normalized === "engage";
 }
 
-export function getBuildModePromptTransform(text: string): string | undefined {
-	return isWorkflowContinuationIntent(text) ? "/step" : undefined;
+export function isContextContinuationRoute(text: string): boolean {
+	return text.includes(CONTEXT_CONTINUATION_ROUTE_MARKER);
 }
 
-export function getWorkflowInputTransform(mode: WorkflowMode, text: string): string | undefined {
-	if (mode !== "build") return undefined;
-	return getBuildModePromptTransform(text) ?? (text.includes(CONTEXT_CONTINUATION_ROUTE_MARKER) ? "/step" : undefined);
+export function isHiddenStepCommand(text: string): boolean {
+	return /^\/step(?:\s|$)/.test(text.trim());
 }
 
 export function getExecutionBlockReason(

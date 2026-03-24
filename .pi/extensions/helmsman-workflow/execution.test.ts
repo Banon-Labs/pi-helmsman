@@ -3,12 +3,13 @@ import {
 	advanceWorkflowPlanForRun,
 	advanceWorkflowPlanForStep,
 	buildVerificationFailureNote,
-	getBuildModePromptTransform,
+	CONTEXT_CONTINUATION_ROUTE_MARKER,
 	getExecutableWorkflowPlan,
 	getExecutionBlockReason,
 	getExecutionStateBlockReason,
 	getVerificationFailureReason,
-	getWorkflowInputTransform,
+	isContextContinuationRoute,
+	isHiddenStepCommand,
 	isVerificationCommand,
 	isWorkflowContinuationIntent,
 	shouldReplanAfterExecutionBlock,
@@ -48,27 +49,28 @@ function buildWorkflowState(overrides: Partial<WorkflowState> = {}): WorkflowSta
 }
 
 describe("build-mode continuation routing", () => {
-	test("recognizes conservative workflow continuation prompts", () => {
+	test("recognizes conservative workflow continuation prompts without auto-running a hidden step command", () => {
 		expect(isWorkflowContinuationIntent("continue")).toBe(true);
 		expect(isWorkflowContinuationIntent(" Engage ")).toBe(true);
 		expect(isWorkflowContinuationIntent("continue current task")).toBe(false);
 	});
 
-	test("rewrites continuation prompts to the guarded step command", () => {
-		expect(getBuildModePromptTransform("continue")).toBe("/step");
-		expect(getBuildModePromptTransform("engage")).toBe("/step");
-		expect(getBuildModePromptTransform("inspect the repo")).toBeUndefined();
-	});
-
-	test("reroutes context-switch continuation prompts back through /step in build mode", () => {
+	test("detects context-switch continuation prompts without exposing /step in user input transforms", () => {
 		const routedPrompt = [
-			"[Helmsman continuation route]",
+			CONTEXT_CONTINUATION_ROUTE_MARKER,
 			"Continue this task in the target repo selected by Helmsman context routing.",
 			"Originating goal: inspect pi-mono and implement the change there",
 		].join("\n");
 
-		expect(getWorkflowInputTransform("build", routedPrompt)).toBe("/step");
-		expect(getWorkflowInputTransform("plan", routedPrompt)).toBeUndefined();
+		expect(isContextContinuationRoute(routedPrompt)).toBe(true);
+		expect(isContextContinuationRoute("continue")).toBe(false);
+	});
+
+	test("recognizes direct /step invocations so the UI can block them explicitly", () => {
+		expect(isHiddenStepCommand("/step")).toBe(true);
+		expect(isHiddenStepCommand(" /step now")).toBe(true);
+		expect(isHiddenStepCommand("/run")).toBe(false);
+		expect(isHiddenStepCommand("step")).toBe(false);
 	});
 });
 
@@ -148,46 +150,36 @@ describe("execution state gating", () => {
 
 describe("verification failure detection", () => {
 	test("recognizes common verification commands", () => {
-		expect(isVerificationCommand("bun test ./.pi/extensions/helmsman-workflow/*.test.ts")).toBe(true);
+		expect(isVerificationCommand("bun test")).toBe(true);
+		expect(isVerificationCommand("pnpm exec vitest run")).toBe(true);
 		expect(isVerificationCommand("npm run lint")).toBe(true);
-		expect(isVerificationCommand("cargo test")).toBe(true);
-		expect(isVerificationCommand("pytest -q")).toBe(true);
+		expect(isVerificationCommand("git status --short")).toBe(false);
 	});
 
-	test("ignores non-verification commands", () => {
-		expect(isVerificationCommand("git status --short --branch")).toBe(false);
-		expect(isVerificationCommand("node scripts/rewrite.js")).toBe(false);
-	});
-
-	test("returns a verification-failure reason for failed verification commands", () => {
-		expect(getVerificationFailureReason("bun test ./.pi/extensions/helmsman-workflow/*.test.ts")).toContain(
-			"Verification command failed",
+	test("returns a verification failure reason only for verification commands", () => {
+		expect(getVerificationFailureReason("bun test ./src/foo.test.ts")).toBe(
+			"Verification command failed: bun test ./src/foo.test.ts.",
 		);
+		expect(getVerificationFailureReason("git status --short")).toBeUndefined();
 	});
 
-	test("does not treat non-verification failures as automatic replanning triggers", () => {
-		expect(getVerificationFailureReason("node scripts/rewrite.js")).toBeUndefined();
-	});
-
-	test("builds a concise persisted verification failure note", () => {
-		expect(buildVerificationFailureNote("bun test ./.pi/extensions/helmsman-workflow/*.test.ts")).toBe(
-			"Verification failed: bun test ./.pi/extensions/helmsman-workflow/*.test.ts",
+	test("formats a stable verification note", () => {
+		expect(buildVerificationFailureNote("pnpm test src/foo.test.ts")).toBe(
+			"Verification failed: pnpm test src/foo.test.ts",
 		);
 	});
 });
 
-describe("advanceWorkflowPlanForStep", () => {
-	test("advances within the current phase one step at a time", () => {
+describe("workflow execution advancement", () => {
+	test("advances to the next step within the current phase", () => {
 		const result = advanceWorkflowPlanForStep(buildApprovedPlan());
-
 		expect(result.plan.currentPhase).toBe(1);
 		expect(result.plan.currentStep).toBe(2);
 		expect(result.summary).toBe("Advanced to step 2 of phase 1.");
 	});
 
-	test("moves to the next phase after the last step of the current phase", () => {
+	test("rolls to the next phase after the last step in a phase", () => {
 		const result = advanceWorkflowPlanForStep(buildApprovedPlan({ currentPhase: 1, currentStep: 3 }));
-
 		expect(result.plan.currentPhase).toBe(2);
 		expect(result.plan.currentStep).toBe(1);
 		expect(result.summary).toBe("Completed phase 1 and advanced to phase 2, step 1.");
@@ -195,25 +187,20 @@ describe("advanceWorkflowPlanForStep", () => {
 
 	test("keeps the plan pinned at the final step when execution is already complete", () => {
 		const result = advanceWorkflowPlanForStep(buildApprovedPlan({ currentPhase: 2, currentStep: 3 }));
-
 		expect(result.plan.currentPhase).toBe(2);
 		expect(result.plan.currentStep).toBe(3);
 		expect(result.summary).toBe("Plan execution is already at the final step.");
 	});
-});
 
-describe("advanceWorkflowPlanForRun", () => {
-	test("advances to the next phase when one exists", () => {
+	test("advances run execution to the next phase", () => {
 		const result = advanceWorkflowPlanForRun(buildApprovedPlan());
-
 		expect(result.plan.currentPhase).toBe(2);
 		expect(result.plan.currentStep).toBe(1);
 		expect(result.summary).toBe("Completed phase 1 and advanced to phase 2.");
 	});
 
-	test("pins execution at the final step when the current phase is already the last phase", () => {
-		const result = advanceWorkflowPlanForRun(buildApprovedPlan({ currentPhase: 2, currentStep: 1 }));
-
+	test("pins run execution at the final phase once complete", () => {
+		const result = advanceWorkflowPlanForRun(buildApprovedPlan({ currentPhase: 2, currentStep: 3 }));
 		expect(result.plan.currentPhase).toBe(2);
 		expect(result.plan.currentStep).toBe(3);
 		expect(result.summary).toBe("Completed the final phase; no further phases remain.");

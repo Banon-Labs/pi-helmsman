@@ -1,5 +1,12 @@
 # Agent Instructions
 
+## Workspace coordinates
+
+- Current workspace root: `/home/choza/projects/pi-helmsman-dev`
+- Sibling main repo: `/home/choza/projects/pi-helmsman`
+- Before editing, verify the target repo/worktree path explicitly. Do not assume the sibling repo is the active workspace.
+- When a task depends on the exact location, state the filesystem path in the issue and in the handoff notes.
+
 This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
 
 ## Quick Reference
@@ -89,6 +96,18 @@ bd ready --json
 bd create "Issue title" --description="Detailed context" -t bug|feature|task -p 0-4 --json
 bd create "Issue title" --description="What this issue is about" -p 1 --deps discovered-from:bd-123 --json
 ```
+
+**Issue context template:**
+
+When an issue depends on the exact folder or worktree, include a short header in the description with:
+
+- `repo-root:` exact path being changed
+- `worktree-root:` if different from `repo-root`
+- `target-files:` the concrete files or directories
+- `scope:` what belongs in the issue
+- `non-goals:` what is explicitly out of scope
+
+Prefer the real filesystem path over a repo nickname so future sessions can tell the main repo and worktree apart.
 
 **Claim and update:**
 
